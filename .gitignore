@@ -1,0 +1,77 @@
+﻿# Environment variables (CRITICAL - NEVER COMMIT!)
+.env
+backend/.env
+backend\.env
+frontend/.streamlit/secrets.toml
+
+# Database
+*.db
+food_tracker.db
+
+# Machine Learning Models (large files)
+*.pt
+*.h5
+*.pth
+backend/ml_models/*.pt
+backend/ml_models/*.h5
+
+# Virtual Environments
+venv/
+env/
+backend/venv/
+frontend/venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Temporary files
+temp_uploads/
+*.tmp
+*.log
+*.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+*.code-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Windows specific
+Thumbs.db
+Desktop.ini
+
+# Project specific
+backend/data/indian_recipes.csv
+docs/*.pdf
