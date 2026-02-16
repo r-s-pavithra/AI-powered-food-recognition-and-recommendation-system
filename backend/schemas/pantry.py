@@ -9,7 +9,7 @@ class PantryItemCreate(BaseModel):
     expiry_date: date
     barcode: Optional[str] = None
     purchase_date: Optional[date] = None
-    manufacturing_date: Optional[date] = None
+    #manufacturing_date: Optional[date] = None
     quantity: int = 1
     unit: str = "pieces"
     storage_location: Optional[str] = None

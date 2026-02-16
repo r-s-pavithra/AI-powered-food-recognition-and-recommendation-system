@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Waste Analytics", page_icon="📊", layout="wide")
 
 
-API_URL = st.secrets.get("API_URL", "http://localhost:8000")
+API_URL = st.secrets.get("API_URL", "http://localhost:8001")
 token = st.session_state.get("token")
 
 

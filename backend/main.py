@@ -1,7 +1,17 @@
+from dotenv import load_dotenv
+import os
+
+
+# Load environment variables FIRST
+load_dotenv()
+
+
+# Now import everything else
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.database import init_db
+from backend.database import init_db  # Keep import but won't call it
 from backend.config import APP_NAME
+
 
 # Import routers individually to avoid circular imports
 from backend.routers import auth
@@ -10,19 +20,13 @@ from backend.routers import recipes
 from backend.routers import alerts
 from backend.routers import notifications
 
+
 APP_VERSION = "1.0.0"
+
+
 # Import scheduler service
 from backend.services.scheduler_service import start_scheduler, stop_scheduler
 
-from dotenv import load_dotenv
-import os
-
-# Load environment variables FIRST
-load_dotenv()
-
-# Now import everything else
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 # Try importing optional routers (if they exist)
 try:
@@ -31,11 +35,13 @@ try:
 except ImportError:
     HAS_BARCODE = False
 
+
 try:
     from backend.routers import waste
     HAS_WASTE = True
 except ImportError:
     HAS_WASTE = False
+
 
 try:
     from backend.routers import chatbot
@@ -43,17 +49,29 @@ try:
 except ImportError:
     HAS_CHATBOT = False
 
+
 try:
     from backend.routers import user
     HAS_USER = True
 except ImportError:
     HAS_USER = False
 
+
 try:
     from backend.routers import tips
     HAS_TIPS = True
 except ImportError:
     HAS_TIPS = False
+
+
+try:
+    from backend.routers import profile
+    HAS_PROFILE = True
+    print("✅ Profile router imported successfully!")
+except ImportError:
+    HAS_PROFILE = False
+    print("⚠️  Warning: Profile router not found. Profile features will be disabled.")
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -64,6 +82,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -73,34 +92,57 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+
+# Include core routers
 app.include_router(auth.router)
 app.include_router(pantry.router)
 app.include_router(recipes.router)
 app.include_router(alerts.router)
 app.include_router(notifications.router)
 
+
 # Include optional routers if they exist
 if HAS_BARCODE:
     app.include_router(barcode.router)
+    
 if HAS_WASTE:
     app.include_router(waste.router)
+    
 if HAS_CHATBOT:
     app.include_router(chatbot.router)
+    
 if HAS_USER:
     app.include_router(user.router)
+    
 if HAS_TIPS:
     app.include_router(tips.router)
+
+
+if HAS_PROFILE:
+    app.include_router(profile.router)
+    print("✅ Profile router loaded successfully!")
+
 
 # Startup event
 @app.on_event("startup")
 def startup_event():
     """Initialize database and start scheduler on startup"""
-    init_db()
+    
+    # ⚠️ COMMENTED OUT - Database must be created manually using recreate_db.py
+    # This prevents overwriting the correct schema on every startup
+    # init_db()
+    
+    print("✅ Using existing database (schema not recreated)")
+    
     start_scheduler()
+    print("=" * 60)
     print(f"🚀 {APP_NAME} API started successfully!")
-    print("📧 Automatic email alerts enabled!")
-    print("⏰ Alerts will run daily at 9:00 AM")
+    print("=" * 60)
+    print("📧 Automatic email alerts: ✅ enabled")
+    print("⏰ Daily alerts scheduled: 9:00 AM")
+    print("👤 Profile management: ✅ enabled" if HAS_PROFILE else "👤 Profile management: ❌ disabled")
+    print("=" * 60)
+
 
 # Shutdown event
 @app.on_event("shutdown")
@@ -108,6 +150,7 @@ def shutdown_event():
     """Stop scheduler on shutdown"""
     stop_scheduler()
     print("🛑 Scheduler stopped")
+
 
 # Root endpoint
 @app.get("/")
@@ -125,6 +168,8 @@ def root():
         active_routers.append("user")
     if HAS_TIPS:
         active_routers.append("tips")
+    if HAS_PROFILE:
+        active_routers.append("profile")
     
     return {
         "message": f"{APP_NAME} API is running!",
@@ -135,10 +180,12 @@ def root():
             "authentication": "✅ enabled",
             "automatic_alerts": "✅ enabled",
             "email_notifications": "✅ enabled",
-            "scheduler": "✅ running"
+            "scheduler": "✅ running",
+            "profile_management": "✅ enabled" if HAS_PROFILE else "❌ disabled"
         },
         "active_routers": active_routers
     }
+
 
 # Health check
 @app.get("/health")
@@ -149,10 +196,86 @@ def health_check():
         "version": APP_VERSION,
         "database": "connected ✅",
         "scheduler": "running ✅",
-        "authentication": "enabled ✅"
+        "authentication": "enabled ✅",
+        "profile_management": "enabled ✅" if HAS_PROFILE else "disabled ❌"
     }
+
+
+# Profile endpoints info (for debugging)
+@app.get("/api/info")
+def api_info():
+    """API endpoints information"""
+    endpoints = {
+        "authentication": [
+            "POST /api/auth/register - Register new user",
+            "POST /api/auth/login - Login user",
+            "GET /api/auth/me - Get current user"
+        ],
+        "pantry": [
+            "GET /api/pantry/items - Get all pantry items",
+            "POST /api/pantry/add - Add new item",
+            "PUT /api/pantry/{id} - Update item",
+            "DELETE /api/pantry/{id} - Delete item",
+            "POST /api/pantry/scan-barcode - Scan barcode"
+        ],
+        "recipes": [
+            "GET /api/recipes/ - Get all recipes",
+            "GET /api/recipes/recommendations - Get personalized recommendations",
+            "POST /api/recipes/favorite - Add to favorites"
+        ],
+        "alerts": [
+            "GET /api/alerts/ - Get all alerts",
+            "PUT /api/alerts/{id} - Update alert",
+            "DELETE /api/alerts/{id} - Delete alert",
+            "POST /api/alerts/test-automatic-alerts - Test alert system"
+        ],
+        "notifications": [
+            "GET /api/notifications/ - Get all notifications",
+            "PUT /api/notifications/{id}/read - Mark as read"
+        ]
+    }
+    
+    if HAS_PROFILE:
+        endpoints["profile"] = [
+            "GET /api/profile/ - Get user profile",
+            "PUT /api/profile/ - Update profile",
+            "PUT /api/profile/notifications - Update notification settings",
+            "GET /api/profile/bmi-info - Get BMI information and recommendations",
+            "DELETE /api/profile/ - Delete account"
+        ]
+    
+    if HAS_USER:
+        endpoints["user"] = [
+            "PUT /api/user/profile - Update user profile (legacy)",
+        ]
+    
+    if HAS_WASTE:
+        endpoints["waste"] = [
+            "GET /api/waste/ - Get waste logs",
+            "POST /api/waste/ - Add waste log",
+            "GET /api/waste/analytics - Get waste analytics"
+        ]
+    
+    if HAS_CHATBOT:
+        endpoints["chatbot"] = [
+            "POST /api/chatbot/chat - Ask chatbot a question",
+            "GET /api/chatbot/history - Get chat history",
+            "GET /api/chatbot/context-preview - Preview context sent to AI"
+        ]
+    
+    return {
+        "api_version": APP_VERSION,
+        "base_url": "/api",
+        "documentation": "/docs",
+        "endpoints": endpoints
+    }
+
 
 # Run with uvicorn
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("\n🔧 Starting server...")
+    print("📝 API Documentation: http://localhost:8001/docs")
+    print("🔍 API Info: http://localhost:8001/api/info")
+    print("\n")
+    uvicorn.run(app, host="0.0.0.0", port=8001)

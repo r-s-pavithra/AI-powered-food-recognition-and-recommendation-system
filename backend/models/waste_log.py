@@ -3,7 +3,6 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from backend.database import Base
 
-
 class WasteLog(Base):
     """Model for tracking wasted food items"""
     __tablename__ = "waste_logs"
@@ -20,16 +19,15 @@ class WasteLog(Base):
     
     # Waste details
     reason = Column(String, nullable=False)  # expired, spoiled, excess, other
-    estimated_cost = Column(Float, default=0.0)  # Estimated cost of wasted item
+    estimated_cost = Column(Float, default=0.0)
     waste_date = Column(Date, default=datetime.now().date)
     
     # Additional info
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     
-    # Relationships
+    # ✅ Relationship already exists
     user = relationship("User", back_populates="waste_logs")
-
 
 class ItemSaved(Base):
     """Model for tracking items used before expiry (savings)"""
@@ -53,5 +51,5 @@ class ItemSaved(Base):
     
     created_at = Column(DateTime, default=datetime.now)
     
-    # Relationships
+    # ⚠️ Check if User model has back_populates="items_saved"
     user = relationship("User", back_populates="items_saved")

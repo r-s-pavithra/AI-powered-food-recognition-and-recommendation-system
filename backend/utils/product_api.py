@@ -31,6 +31,7 @@ def fetch_product_info(barcode):
 def fetch_from_open_food_facts(barcode):
     """
     Fetch from Open Food Facts API
+    Returns format compatible with pantry router
     """
     try:
         url = f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
@@ -59,19 +60,20 @@ def fetch_from_open_food_facts(barcode):
                 # Estimate expiry
                 expiry_days = estimate_expiry_days(category, product_name)
                 
+                # ✅ NEW: Return in format that pantry.py expects
                 return {
                     "success": True,
-                    "source": "Open Food Facts",
-                    "product_name": f"{brands} {product_name}".strip(),
-                    "category": category,
-                    "barcode": barcode,
-                    "image_url": image_url,
-                    "expiry_days": expiry_days,
-                    "raw_data": {
+                    "product": {  # ← Wrapped in "product" key
+                        "product_name": f"{brands} {product_name}".strip() if brands else product_name,
                         "brands": brands,
                         "categories": categories,
-                        "ingredients": product.get('ingredients_text', ''),
+                        "category": category,  # Our determined category
+                        "barcode": barcode,
+                        "image_url": image_url,
+                        "expiry_days": expiry_days,
                         "quantity": product.get('quantity', ''),
+                        "ingredients": product.get('ingredients_text', ''),
+                        "nutriscore": product.get('nutriscore_grade', ''),
                     }
                 }
         
@@ -85,6 +87,7 @@ def fetch_from_open_food_facts(barcode):
 def fetch_from_upc_database(barcode):
     """
     Fetch from UPCitemdb.com API (free tier)
+    Returns format compatible with pantry router
     """
     try:
         url = f"https://api.upcitemdb.com/prod/trial/lookup"
@@ -100,23 +103,27 @@ def fetch_from_upc_database(barcode):
                 
                 product_name = item.get('title', 'Unknown Product')
                 brand = item.get('brand', '')
-                category = item.get('category', 'other')
+                category_raw = item.get('category', 'other')
                 images = item.get('images', [])
                 
                 # Skip if no useful data
                 if not product_name or product_name == 'Unknown Product':
                     return {"success": False}
                 
+                category = determine_category(category_raw)
+                expiry_days = estimate_expiry_days(category, product_name)
+                
+                # ✅ Return in format that pantry.py expects
                 return {
                     "success": True,
-                    "source": "UPC Database",
-                    "product_name": f"{brand} {product_name}".strip(),
-                    "category": determine_category(category),
-                    "barcode": barcode,
-                    "image_url": images[0] if images else "",
-                    "expiry_days": estimate_expiry_days(determine_category(category), product_name),
-                    "raw_data": {
-                        "brand": brand,
+                    "product": {  # ← Wrapped in "product" key
+                        "product_name": f"{brand} {product_name}".strip() if brand else product_name,
+                        "brands": brand,
+                        "categories": category_raw,
+                        "category": category,
+                        "barcode": barcode,
+                        "image_url": images[0] if images else "",
+                        "expiry_days": expiry_days,
                         "description": item.get('description', ''),
                     }
                 }

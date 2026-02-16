@@ -1,12 +1,13 @@
 import streamlit as st
 import requests
 
+
 def show_notification_bell(API_URL, headers):
     """Display notification bell with unread count and alerts"""
     
     try:
         # Get unread count
-        response = requests.get(f"{API_URL}/api/notifications/unread-count", headers=headers)
+        response = requests.get(f"{API_URL}/api/notifications/unread-count", headers=headers, timeout=3)
         
         if response.status_code == 200:
             unread_count = response.json()['unread_count']
@@ -42,8 +43,10 @@ def show_notification_bell(API_URL, headers):
                 with st.expander(f"🔔 View {unread_count} Alert{'s' if unread_count != 1 else ''}", expanded=False):
                     # Get notifications
                     notif_response = requests.get(
-                        f"{API_URL}/api/notifications/?unread_only=true&limit=10",
-                        headers=headers
+                        f"{API_URL}/api/notifications/",
+                        headers=headers,
+                        params={"unread_only": True, "limit": 10},
+                        timeout=3
                     )
                     
                     if notif_response.status_code == 200:
@@ -74,16 +77,22 @@ def show_notification_bell(API_URL, headers):
                                     if st.button("✓ Dismiss", key=f"read_{notif['id']}", use_container_width=True):
                                         requests.post(
                                             f"{API_URL}/api/notifications/{notif['id']}/mark-read",
-                                            headers=headers
+                                            headers=headers,
+                                            timeout=3
                                         )
                                         st.rerun()
                         
                         # Mark all read button
                         st.markdown("---")
                         if st.button("✓ Dismiss All Alerts", use_container_width=True, type="primary"):
-                            requests.post(f"{API_URL}/api/notifications/mark-all-read", headers=headers)
+                            requests.post(
+                                f"{API_URL}/api/notifications/mark-all-read", 
+                                headers=headers,
+                                timeout=3
+                            )
                             st.success("All alerts dismissed!")
                             st.rerun()
     
     except Exception as e:
-        pass  # Silently fail if notifications not available
+        # Silently fail if notifications not available
+        pass

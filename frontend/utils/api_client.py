@@ -2,7 +2,7 @@ import requests
 from typing import Optional
 
 # Default backend base URL
-DEFAULT_BASE = "http://localhost:8000"
+DEFAULT_BASE = "http://localhost:8001"
 
 def post_chat(
     message: str, 

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from backend.database import Base
+from backend.models.user import user_recipe_favorites
 
 # Many-to-many relationship table for user favorites
 user_favorites = Table(
@@ -32,7 +33,14 @@ class Recipe(Base):
     fat = Column(Integer)
     
     # Relationship with users (favorites)
-    favorited_by = relationship("User", secondary=user_favorites, back_populates="favorite_recipes")
+    #favorited_by = relationship("User", secondary=user_favorites, back_populates="favorite_recipes")
+    #favorited_by = relationship("User", secondary=user_favorites, back_populates="favorite_recipes")
+    # ✅ ADDED: Relationship with users (favorites)
+    favorited_by = relationship(
+        "User",
+        secondary=user_recipe_favorites,
+        back_populates="favorite_recipes"
+    )
     
     def __repr__(self):
         return f"<Recipe {self.name}>"

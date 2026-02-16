@@ -12,7 +12,7 @@ if 'token' not in st.session_state:
     st.warning("⚠️ Please login first!")
     st.stop()
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:8001"
 headers = {"Authorization": f"Bearer {st.session_state.token}"}
 
 st.title("➕ Add Item to Pantry")

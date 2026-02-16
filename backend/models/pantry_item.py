@@ -1,40 +1,41 @@
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey
 from datetime import datetime
 from backend.database import Base
+from sqlalchemy.orm import relationship
 
 class PantryItem(Base):
-    """Pantry item model for food inventory"""
+    """Pantry item model for tracking food items"""
     __tablename__ = "pantry_items"
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     # Product details
-    barcode = Column(String(50), nullable=True)
     product_name = Column(String(255), nullable=False)
-    category = Column(String(50), nullable=False, index=True)
+    category = Column(String(100), nullable=False)
+    quantity = Column(Integer, default=1)
+    unit = Column(String(50), default="pieces")
     
     # Dates
     purchase_date = Column(Date, nullable=True)
+    expiry_date = Column(Date, nullable=False)
     manufacturing_date = Column(Date, nullable=True)
-    expiry_date = Column(Date, nullable=False, index=True)
-    
-    # Quantity
-    quantity = Column(Integer, default=1)
-    unit = Column(String(20), default="pieces")
-    
     # Storage
-    storage_location = Column(String(50), nullable=True)
+    storage_location = Column(String(100), nullable=True)  # fridge, freezer, pantry, counter
     
-    # Metadata
-    nutritional_info = Column(Text, nullable=True)  # JSON string
-    source = Column(String(20), nullable=False)  # manual, barcode, image
-    date_extraction_method = Column(String(20), nullable=True)  # manual, ocr, api
-    ocr_confidence = Column(Float, nullable=True)
+    
+    # Optional fields
+    barcode = Column(String(100), nullable=True)
+    image_url = Column(String(500), nullable=True)
+    notes = Column(String(500), nullable=True)
+    source = Column(String(50), default="manual")  # manual, barcode, ocr, image
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relationship - THIS IS THE FIX
+    user = relationship("User", back_populates="pantry_items")
+    
     def __repr__(self):
-        return f"<PantryItem(id={self.id}, name={self.product_name}, expiry={self.expiry_date})>"
+        return f"<PantryItem(id={self.id}, product={self.product_name}, expires={self.expiry_date})>"

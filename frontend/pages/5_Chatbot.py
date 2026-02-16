@@ -23,7 +23,7 @@ if "token" not in st.session_state or not st.session_state.token:
     st.stop()
 
 # Get backend URL
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:8001"
 
 st.title("🤖 AI Cooking Assistant")
 st.markdown("Ask me anything about cooking, recipes, food storage, or nutrition!")

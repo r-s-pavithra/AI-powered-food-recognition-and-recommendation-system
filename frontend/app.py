@@ -17,7 +17,7 @@ st.set_page_config(
 
 
 # Get API URL
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:8001"
 
 
 
@@ -145,7 +145,7 @@ def show_login_page():
                             st.error("❌ Invalid email or password")
                     except requests.exceptions.ConnectionError:
                         st.error("❌ Cannot connect to backend")
-                        st.info("Make sure backend is running at http://localhost:8000")
+                        st.info("Make sure backend is running at http://localhost:8001")
                     except Exception as e:
                         st.error(f"Connection error: {str(e)}")
                 else:
@@ -184,7 +184,7 @@ def show_login_page():
                                 st.error("❌ Registration failed")
                         except requests.exceptions.ConnectionError:
                             st.error("❌ Cannot connect to backend")
-                            st.info("Make sure backend is running at http://localhost:8000")
+                            st.info("Make sure backend is running at http://localhost:8001")
                         except Exception as e:
                             st.error(f"Connection error: {str(e)}")
                 else:

@@ -13,7 +13,7 @@ if 'token' not in st.session_state:
     st.stop()
 
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:8001"
 headers = {"Authorization": f"Bearer {st.session_state.token}"}
 
 
