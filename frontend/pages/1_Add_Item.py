@@ -18,8 +18,7 @@ headers = {"Authorization": f"Bearer {st.session_state.token}"}
 st.title("➕ Add Item to Pantry")
 
 # Tabs for different input methods
-tab1, tab2 = st.tabs(["📷 Scan Barcode", "✍️ Manual Entry"])
-
+tab1, tab2, tab3 = st.tabs(["📷 Scan Barcode", "🖼️ Image Recognition", "✏️ Manual Entry"])
 # TAB 1: Barcode Scanning
 with tab1:
     st.subheader("📷 Scan Product Barcode")
@@ -189,8 +188,109 @@ with tab1:
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
 
-# TAB 2: Manual Entry (existing code)
+
+
+
 with tab2:
+    st.subheader("🍎 Recognize Food from Image")
+    st.info("Take a photo or upload an image of your food item!")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        camera_img = st.camera_input("📸 Take a photo")
+    with col2:
+        uploaded_img = st.file_uploader("📁 Or upload an image",
+                                         type=["jpg", "jpeg", "png"])
+
+    image_file = camera_img or uploaded_img
+
+    if image_file:
+        st.image(image_file, caption="Your image", width=300)
+
+        if st.button("🔍 Recognize Food", type="primary"):
+            with st.spinner("Analyzing image..."):
+                try:
+                    files = {"file": (image_file.name,
+                                      image_file.getvalue(),
+                                      image_file.type)}
+                    response = requests.post(
+                        f"{API_URL}/api/pantry/recognize-food",
+                        headers=headers,
+                        files=files
+                    )
+                    if response.status_code == 200:
+                        result = response.json()
+                        st.success(f"✅ Detected: **{result['food_name']}** "
+                                   f"({result['confidence']}% confident)")
+
+                        # Show alternatives
+                        if result.get("alternatives"):
+                            st.caption("Other possibilities: " +
+                                       ", ".join([a['food_name']
+                                                  for a in result['alternatives']]))
+
+                        # Store for confirmation form below
+                        st.session_state.recognized_food = {
+                            "product_name": result["food_name"],
+                            "category": result["category"],
+                            "expiry_days": result["expiry_days"],
+                            "nutritional_info": result.get("nutritional_info", {})
+                        }
+                    else:
+                        st.error(f"❌ {response.json().get('detail', 'Recognition failed')}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    # Editable confirmation form
+    if "recognized_food" in st.session_state:
+        rec = st.session_state.recognized_food
+        st.markdown("---")
+        st.subheader("✏️ Confirm / Edit Details")
+        st.caption("Review the detected info and correct if needed before saving.")
+
+        with st.form("image_recognition_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                product_name = st.text_input("Product Name", value=rec["product_name"])
+                category = st.selectbox("Category",
+                    ["dairy","fruits","vegetables","meat","bakery",
+                     "beverages","snacks","frozen","canned","grains","other"],
+                    index=["dairy","fruits","vegetables","meat","bakery",
+                           "beverages","snacks","frozen","canned","grains","other"
+                           ].index(rec.get("category", "other")))
+                quantity = st.number_input("Quantity", min_value=1, value=1)
+            with col2:
+                default_expiry = datetime.now() + timedelta(days=rec.get("expiry_days", 7))
+                expiry_date = st.date_input("Expiry Date", value=default_expiry)
+                unit = st.selectbox("Unit", ["pieces","liters","kg","grams","ml","packets"])
+                storage = st.selectbox("Storage", ["fridge","freezer","pantry","counter"])
+
+            submit = st.form_submit_button("✅ Add to Pantry", type="primary",
+                                           use_container_width=True)
+            if submit:
+                item_data = {
+                    "product_name": product_name,
+                    "category": category,
+                    "expiry_date": expiry_date.strftime("%Y-%m-%d"),
+                    "quantity": quantity,
+                    "unit": unit,
+                    "storage_location": storage,
+                    "source": "image"
+                }
+                resp = requests.post(f"{API_URL}/api/pantry/add",
+                                     json=item_data, headers=headers)
+                if resp.status_code == 201:
+                    st.success("🎉 Item added to pantry!")
+                    del st.session_state.recognized_food
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to add item")
+
+
+
+# TAB 2: Manual Entry (existing code)
+with tab3:
     st.subheader("✍️ Enter Details Manually")
     
     with st.form("manual_entry_form"):

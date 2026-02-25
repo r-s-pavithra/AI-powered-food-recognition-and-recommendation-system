@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timedelta
@@ -12,6 +14,7 @@ from backend.services.scheduler_service import test_alerts_now
 
 
 router = APIRouter(prefix="/api/alerts", tags=["Alerts"])
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "admin123")
 
 class AlertResponse(BaseModel):
     id: int
@@ -26,19 +29,22 @@ class AlertResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+
 @router.get("/expiring", response_model=List[AlertResponse])
 def get_expiring_items(
     days: int = 7,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get items expiring within specified days"""
+    """Get items expiring within specified days - ONLY FOR CURRENT USER"""
     
     today = datetime.now().date()
     target_date = today + timedelta(days=days)
     
+    # ✅ FIX: Added user_id filter
     items = db.query(PantryItem).filter(
-        PantryItem.user_id == current_user.id,
+        PantryItem.user_id == current_user.id,  # ✅ CRITICAL: Filter by current user
         PantryItem.expiry_date <= target_date
     ).order_by(PantryItem.expiry_date).all()
     
@@ -69,19 +75,21 @@ def get_expiring_items(
     
     return result
 
+
+
 @router.post("/send-email")
 def send_email_alert(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Send expiry alert email to user"""
+    """Send expiry alert email to user - ONLY THEIR ITEMS"""
     
-    # Get expiring items (next 7 days)
+    # Get expiring items (next 7 days) - ✅ FIX: Filter by user_id
     today = datetime.now().date()
     target_date = today + timedelta(days=7)
     
     items = db.query(PantryItem).filter(
-        PantryItem.user_id == current_user.id,
+        PantryItem.user_id == current_user.id,  # ✅ CRITICAL: Filter by current user
         PantryItem.expiry_date <= target_date
     ).all()
     
@@ -112,6 +120,23 @@ def send_email_alert(
     
     return result
 
+
+
+
+@router.post("/test-automatic-alerts-all")
+def test_alerts_all_users(x_admin_secret: str = Header(...)):
+    """
+    Trigger alert check for ALL users in the database.
+    Pass X-Admin-Secret header instead of Bearer token.
+    """
+    if x_admin_secret != ADMIN_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
+    
+    result = test_alerts_now()  # This already loops all users
+    return result
+
+
+
 @router.post("/test-automatic-alerts")
 def test_automatic_alerts(
     current_user: User = Depends(get_current_user)
@@ -121,39 +146,70 @@ def test_automatic_alerts(
     return result
 
 
+
+@router.post("/test-whatsapp")
+def test_whatsapp_notification(
+    current_user: User = Depends(get_current_user)
+):
+    """Test WhatsApp notification"""
+    from backend.services.whatsapp_service import send_test_whatsapp
+    
+    if not current_user.phone:
+        raise HTTPException(status_code=400, detail="Phone number not set in profile. Please add your phone number first.")
+    
+    if not current_user.whatsapp_notifications:
+        raise HTTPException(status_code=400, detail="WhatsApp notifications not enabled. Please enable WhatsApp notifications in your profile.")
+    
+    result = send_test_whatsapp(current_user.phone)
+    
+    if result.get('success'):
+        return {
+            "success": True,
+            "message": f"Test WhatsApp sent to {current_user.phone}",
+            "message_sid": result.get('message_sid')
+        }
+    else:
+        raise HTTPException(status_code=500, detail=result.get('error'))
+
+
+
 @router.get("/stats")
 def get_alert_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get alert statistics"""
+    """Get alert statistics - ONLY FOR CURRENT USER"""
     
     today = datetime.now().date()
     
-    # Total items
-    total = db.query(PantryItem).filter(PantryItem.user_id == current_user.id).count()
+    # ✅ FIX: All queries now filter by user_id
     
-    # Expired
+    # Total items - ONLY current user's
+    total = db.query(PantryItem).filter(
+        PantryItem.user_id == current_user.id
+    ).count()
+    
+    # Expired - ONLY current user's
     expired = db.query(PantryItem).filter(
         PantryItem.user_id == current_user.id,
         PantryItem.expiry_date < today
     ).count()
     
-    # Expiring in 3 days
+    # Expiring in 3 days - ONLY current user's
     critical = db.query(PantryItem).filter(
         PantryItem.user_id == current_user.id,
         PantryItem.expiry_date >= today,
         PantryItem.expiry_date <= today + timedelta(days=3)
     ).count()
     
-    # Expiring in 7 days
+    # Expiring in 7 days - ONLY current user's
     warning = db.query(PantryItem).filter(
         PantryItem.user_id == current_user.id,
         PantryItem.expiry_date > today + timedelta(days=3),
         PantryItem.expiry_date <= today + timedelta(days=7)
     ).count()
     
-    # Fresh (more than 7 days)
+    # Fresh (more than 7 days) - ONLY current user's
     fresh = db.query(PantryItem).filter(
         PantryItem.user_id == current_user.id,
         PantryItem.expiry_date > today + timedelta(days=7)

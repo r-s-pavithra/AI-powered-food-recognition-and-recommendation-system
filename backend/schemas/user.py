@@ -44,6 +44,7 @@ class UserResponse(UserBase):
     email_notifications: bool = True
     daily_alerts: bool = True
     recipe_suggestions: bool = True
+    whatsapp_notifications: bool = True
     
     created_at: datetime
     
@@ -80,6 +81,7 @@ class NotificationSettingsUpdate(BaseModel):
     email_notifications: Optional[bool] = None
     daily_alerts: Optional[bool] = None
     recipe_suggestions: Optional[bool] = None
+    whatsapp_notifications: Optional[bool] = None 
 
 class BMIInfo(BaseModel):
     """Schema for BMI information and recommendations"""

@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, 
 from datetime import datetime
 from backend.database import Base
 from sqlalchemy.orm import relationship
-
+from backend.models.notification import Notification
 
 # ✅ Association table for user-recipe favorites (many-to-many)
 user_recipe_favorites = Table(
@@ -41,6 +41,8 @@ class User(Base):
     allergies = Column(Text, nullable=True)
     food_restrictions = Column(Text, nullable=True)
     
+    whatsapp_notifications = Column(Boolean, default=False)
+
     # Notification preferences
     alert_threshold_days = Column(Integer, default=7)
     email_alerts_enabled = Column(Boolean, default=True)

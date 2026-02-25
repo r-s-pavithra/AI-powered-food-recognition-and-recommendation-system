@@ -1,3 +1,4 @@
+from git import List
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date, datetime
@@ -35,3 +36,26 @@ class PantryItemResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class FoodRecognitionResponse(BaseModel):
+    success: bool
+    food_name: Optional[str] = None
+    confidence: Optional[float] = None
+    category: Optional[str] = None
+    expiry_days: Optional[int] = None
+    alternatives: Optional[List[dict]] = None
+    error: Optional[str] = None
+
+class WasteLogCreate(BaseModel):
+    reason: str
+    estimatedvalue: Optional[float] = 0.0
+
+class BarcodeResponse(BaseModel):
+    success: bool
+    product_name: Optional[str] = None
+    category: Optional[str] = None
+    barcode: Optional[str] = None
+    expiry_days: Optional[int] = None
+    suggested_expiry: Optional[date] = None
+    error: Optional[str] = None
+    

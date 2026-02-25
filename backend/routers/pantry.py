@@ -10,14 +10,19 @@ from datetime import date
 from backend.database import get_db
 from backend.models.user import User
 from backend.models.pantry_item import PantryItem
-from backend.schemas.pantry import PantryItemCreate, PantryItemResponse
+from backend.schemas.pantry import FoodRecognitionResponse, PantryItemCreate, PantryItemResponse
 from backend.routers.auth import get_current_user
 from backend.utils.barcode_scanner import decode_barcode, enhance_image_for_barcode
 # ✅ FIXED: Import BarcodeService instead of fetch_product_info
 from backend.services.barcode_service import BarcodeService
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from backend.services.food_recognition import FoodRecognitionService
+from backend.routers.auth import get_current_user
+from backend.models.user import User
 
 router = APIRouter(prefix="/api/pantry", tags=["Pantry"])
-
+barcode_service = BarcodeService()
+food_recognition_service = FoodRecognitionService() 
 
 @router.post("/add", response_model=PantryItemResponse, status_code=status.HTTP_201_CREATED)
 def add_item(
@@ -274,6 +279,33 @@ async def scan_barcode(
             "success": False,
             "error": f"Error processing image: {str(e)}"
         }
+
+
+
+@router.post("/recognize-food", response_model=FoodRecognitionResponse)
+async def recognize_food(
+    file: UploadFile = File(..., description="Food image"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """🖼️ AI Food Recognition: YOLOv8 → Add to pantry."""
+    # Validate image
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Please upload an image file")
+    
+    # Read image bytes
+    image_bytes = await file.read()
+    
+    # Run YOLOv8 + LogMeal recognition
+    result = food_recognition_service.recognize_food_from_bytes(image_bytes)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    
+    # Return result for user to EDIT/CONFIRM before adding to pantry
+    return FoodRecognitionResponse(**result)
+
+
 
 
 @router.post("/mark-as-consumed/{item_id}")
