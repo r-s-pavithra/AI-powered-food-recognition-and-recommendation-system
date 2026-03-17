@@ -13,6 +13,7 @@ pydantic-settings>=2.0.0
 # Authentication
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+bcrypt>=4.1.0
 python-multipart>=0.0.6
 
 # Environment Variables
@@ -26,9 +27,13 @@ APScheduler>=3.10.0
 
 # Image Processing (Python 3.13 compatible)
 Pillow>=11.0.0
+opencv-python>=4.10.0
+pyzbar>=0.1.9
 
 # AI APIs
 google-generativeai>=0.3.0
+google-cloud-vision>=3.7.0
+groq>=0.11.0
 
 # Visualization
 plotly>=5.18.0
@@ -37,6 +42,7 @@ plotly>=5.18.0
 pytest>=7.4.0
 httpx>=0.25.0
 email-validator>=2.1.0
+twilio>=9.3.0
 
 # Date Handling
 python-dateutil>=2.8.0

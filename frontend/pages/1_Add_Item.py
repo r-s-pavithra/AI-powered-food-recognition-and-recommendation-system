@@ -17,12 +17,21 @@ headers = {"Authorization": f"Bearer {st.session_state.token}"}
 
 st.title("➕ Add Item to Pantry")
 
+# One-time flash message across reruns
+flash_success = st.session_state.pop("flash_success", None)
+flash_error = st.session_state.pop("flash_error", None)
+if flash_success:
+    st.success(flash_success)
+if flash_error:
+    st.error(flash_error)
+
 # Tabs for different input methods
 tab1, tab2, tab3 = st.tabs(["📷 Scan Barcode", "🖼️ Image Recognition", "✏️ Manual Entry"])
+
 # TAB 1: Barcode Scanning
 with tab1:
     st.subheader("📷 Scan Product Barcode")
-    st.info("Take a photo of the product barcode to auto-fill details!")
+    st.info("Take a photo of the product barcode to auto-fill details! For best results if the database fails, ensure the brand name is also visible in the photo.")
     
     # Camera input
     camera_image = st.camera_input("Take a picture of the barcode")
@@ -48,45 +57,74 @@ with tab1:
                     
                     if response.status_code == 200:
                         result = response.json()
+                        barcode = result.get('barcode', '')
+                        product = result.get('product')
                         
-                        if result.get('success'):
-                            barcode = result.get('barcode')
-                            product = result.get('product')
-                            
+                        # PRIMARY PLAN: Barcode API finds the product
+                        if result.get('success') and product and product.get('success'):
                             st.success(f"✅ Barcode detected: {barcode}")
+                            st.success(f"🎉 Product found: {product['product_name']}")
                             
-                            if product and product.get('success'):
-                                # Product found in database
-                                st.success(f"🎉 Product found: {product['product_name']}")
+                            st.session_state.scanned_product = {
+                                'product_name': product['product_name'],
+                                'category': product['category'],
+                                'barcode': barcode,
+                                'expiry_days': product['expiry_days'],
+                                'image_url': product.get('image_url', '')
+                            }
+                            
+                            # Show product details
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                if product.get('image_url'):
+                                    st.image(product['image_url'], width=200)
+                            with col2:
+                                st.markdown(f"**Product:** {product['product_name']}")
+                                st.markdown(f"**Category:** {product['category']}")
+                                st.markdown(f"**Barcode:** {barcode}")
+                                st.markdown(f"**Estimated Expiry:** {product['expiry_days']} days")
+                            st.info("👇 Review details below and click 'Add to Pantry'")
+                            
+                        # FALLBACK PLAN: Barcode API failed, use Gemini Vision!
+                        elif result.get('success') and not product:
+                            st.warning(f"⚠️ Barcode {barcode} found, but product isn't in the database.")
+                            st.info("🤖 Activating Gemini AI Vision to read the package...")
+                            
+                            # Send the same image to your existing Gemini endpoint
+                            ai_files = {"file": ("barcode.jpg", camera_image.getvalue(), "image/jpeg")}
+                            ai_response = requests.post(
+                                f"{API_URL}/api/pantry/recognize-food",
+                                headers=headers,
+                                files=ai_files
+                            )
+                            
+                            if ai_response.status_code == 200:
+                                ai_result = ai_response.json()
+                                food_name = ai_result.get('food_name')
                                 
-                                # Store in session state for form
-                                st.session_state.scanned_product = {
-                                    'product_name': product['product_name'],
-                                    'category': product['category'],
-                                    'barcode': barcode,
-                                    'expiry_days': product['expiry_days'],
-                                    'image_url': product.get('image_url', '')
-                                }
-                                
-                                # Show product details
-                                col1, col2 = st.columns([1, 2])
-                                
-                                with col1:
-                                    if product.get('image_url'):
-                                        st.image(product['image_url'], width=200)
-                                
-                                with col2:
-                                    st.markdown(f"**Product:** {product['product_name']}")
-                                    st.markdown(f"**Category:** {product['category']}")
-                                    st.markdown(f"**Barcode:** {barcode}")
-                                    st.markdown(f"**Estimated Expiry:** {product['expiry_days']} days")
-                                
-                                st.info("👇 Review details below and click 'Add to Pantry'")
+                                # ✅ FIX: Check if AI actually found a name and it's not "None"
+                                if food_name and str(food_name).lower() != "none" and food_name.strip():
+                                    st.success(f"✅ AI successfully identified: **{food_name}**")
+                                    
+                                    st.session_state.scanned_product = {
+                                        'barcode': barcode, # Keep the barcode we found!
+                                        'product_name': food_name,
+                                        'category': ai_result.get('category', 'other'),
+                                        'expiry_days': ai_result.get('expiry_days', 7),
+                                        'image_url': ''
+                                    }
+                                else:
+                                    # Handle the case where the AI just saw black and white lines
+                                    st.error("👀 AI couldn't recognize the product from this photo.")
+                                    st.info("💡 Tip: For the AI fallback to work, take a photo that shows both the barcode AND the product's front label/brand name!")
+                                    
+                                    st.session_state.scanned_product = {
+                                        'barcode': barcode,
+                                        'product_name': '',
+                                        'category': 'other'
+                                    }
                             else:
-                                # Barcode found but no product info
-                                st.warning(f"⚠️ Barcode {barcode} detected but product not found in database.")
-                                st.info("Please enter product details manually below.")
-                                
+                                st.error("❌ Both Database and AI recognition failed. Please enter manually.")
                                 st.session_state.scanned_product = {
                                     'barcode': barcode,
                                     'product_name': '',
@@ -178,7 +216,7 @@ with tab1:
                         )
                         
                         if response.status_code == 201:
-                            st.success("✅ Item added to pantry successfully!")
+                            st.session_state.flash_success = "Item added to pantry successfully."
                             del st.session_state.scanned_product
                             st.balloons()
                             st.rerun()
@@ -188,9 +226,7 @@ with tab1:
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
 
-
-
-
+# TAB 2: Image Recognition
 with tab2:
     st.subheader("🍎 Recognize Food from Image")
     st.info("Take a photo or upload an image of your food item!")
@@ -280,16 +316,14 @@ with tab2:
                 resp = requests.post(f"{API_URL}/api/pantry/add",
                                      json=item_data, headers=headers)
                 if resp.status_code == 201:
-                    st.success("🎉 Item added to pantry!")
+                    st.session_state.flash_success = "Item added to pantry successfully."
                     del st.session_state.recognized_food
                     st.balloons()
                     st.rerun()
                 else:
                     st.error("❌ Failed to add item")
 
-
-
-# TAB 2: Manual Entry (existing code)
+# TAB 3: Manual Entry
 with tab3:
     st.subheader("✍️ Enter Details Manually")
     

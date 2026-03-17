@@ -122,7 +122,7 @@ with col1:
     **To receive WhatsApp alerts:**
     1. Open WhatsApp on your phone
     2. Send this message to **+1 415 523 8886**:
-       `join <sandbox-keyword>`
+       `join trap-atmosphere`
     3. You'll get a confirmation ✅
     4. After joining, expiry alerts will be sent to your WhatsApp automatically!
 
@@ -246,7 +246,7 @@ try:
                             if st.button("🗑️ Remove", key=f"del_exp_{item['id']}", use_container_width=True, type="secondary"):
                                 try:
                                     del_response = requests.delete(
-                                        f"{API_URL}/api/pantry/{item['id']}",
+                                        f"{API_URL}/api/pantry/items/{item['id']}",
                                         headers=headers,
                                         timeout=5
                                     )
@@ -357,7 +357,9 @@ with col2:
             )
             if response.status_code == 200:
                 st.success("All notifications marked as read!")
-                st.rerun()
+                st.session_state["alerts_refresh_notifications"] = True
+            else:
+                st.error(f"Failed to mark all as read ({response.status_code})")
         except:
             st.error("Failed")
 
@@ -370,9 +372,14 @@ with col2:
             if response.status_code == 200:
                 result = response.json()
                 st.success(f"Deleted {result['count']} notifications!")
-                st.rerun()
+                st.session_state["alerts_refresh_notifications"] = True
+            else:
+                st.error(f"Failed to delete read notifications ({response.status_code})")
         except:
             st.error("Failed")
+
+if st.session_state.pop("alerts_refresh_notifications", False):
+    st.rerun()
 
 
 st.divider()

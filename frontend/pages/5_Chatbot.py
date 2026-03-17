@@ -116,7 +116,10 @@ with st.sidebar:
     st.markdown("### 📡 Backend Status")
     try:
         r = requests.get(f"{API_URL}/health", timeout=3)
-        st.success("✅ Connected") if r.status_code == 200 else st.error("❌ Error")
+        if r.status_code == 200:
+            st.success("✅ Connected")
+        else:
+            st.error("❌ Error")
     except:
         st.error("❌ Offline")
 

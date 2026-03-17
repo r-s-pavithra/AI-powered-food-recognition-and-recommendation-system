@@ -6,6 +6,9 @@ AI Chatbot Service using Groq API with User Context
 from typing import Optional, List, Dict
 import os
 import requests
+import logging
+
+logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -15,7 +18,7 @@ if not GROQ_API_KEY:
         env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
         load_dotenv(env_path)
         GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-    except:
+    except Exception:
         pass
 
 if not GROQ_API_KEY:
@@ -23,12 +26,10 @@ if not GROQ_API_KEY:
         from dotenv import load_dotenv
         load_dotenv()
         GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-    except:
+    except Exception:
         pass
 
-print(f"[ChatbotService] GROQ_API_KEY loaded: {bool(GROQ_API_KEY)}")
-if GROQ_API_KEY:
-    print(f"[ChatbotService] Key starts with: {GROQ_API_KEY[:15]}...")
+logger.info("[ChatbotService] GROQ configured: %s", bool(GROQ_API_KEY))
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -38,9 +39,9 @@ class ChatbotService:
         self.api_key = GROQ_API_KEY
         self.is_configured = bool(self.api_key)
         if self.is_configured:
-            print("[ChatbotService] ✅ Groq configured successfully!")
+            logger.info("[ChatbotService] Groq configured successfully")
         else:
-            print("[ChatbotService] ❌ GROQ_API_KEY not found")
+            logger.warning("[ChatbotService] GROQ_API_KEY not found")
             self.error = "GROQ_API_KEY not found in environment"
 
     def build_user_context(self, user_data: Optional[Dict] = None, pantry_items: Optional[List[Dict]] = None) -> str:
@@ -218,18 +219,16 @@ class ChatbotService:
         }
 
         try:
-            print(f"[ChatbotService] Calling Groq: {user_message[:50]}...")
-            print(f"[ChatbotService] Total messages in payload: {len(messages)}")
+            logger.debug("[ChatbotService] Calling Groq with %s messages", len(messages))
             response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=30)
 
             if response.status_code == 200:
                 data = response.json()
                 ai_response = data["choices"][0]["message"]["content"]
-                print("[ChatbotService] ✅ Got response from Groq!")
                 return ai_response
             else:
                 error_text = response.text[:300]
-                print(f"[ChatbotService] ❌ API error: {response.status_code} - {error_text}")
+                logger.warning("[ChatbotService] API error %s: %s", response.status_code, error_text)
                 if response.status_code == 429:
                     return "Rate limit reached. Please wait a moment and try again."
                 elif response.status_code == 401:

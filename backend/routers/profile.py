@@ -2,10 +2,9 @@
 Profile Router - Complete user profile management with WhatsApp support
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from pytest import File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
-from AI_powered_food_recognition_and_recommendation_platform.backend.schemas.pantry import FoodRecognitionResponse
+from backend.schemas.pantry import FoodRecognitionResponse
 from backend.database import get_db
 from backend.models.user import User
 from backend.routers.auth import get_current_user

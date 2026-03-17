@@ -3,6 +3,7 @@ FastAPI Main Application - FIXED .env Loading
 """
 import os
 from pathlib import Path
+import logging
 from dotenv import load_dotenv
 
 # ✅ FIX: Load .env with absolute path FIRST (before any other imports)
@@ -10,32 +11,16 @@ current_file = Path(__file__).resolve()
 backend_dir = current_file.parent
 env_path = backend_dir / ".env"
 
-print(f"🔍 Looking for .env at: {env_path}")
-print(f"   File exists: {env_path.exists()}")
+logger = logging.getLogger(__name__)
 
 if env_path.exists():
     load_dotenv(dotenv_path=str(env_path), override=True)
-    print(f"✅ .env file loaded successfully from: {env_path}")
-else:
-    print(f"❌ ERROR: .env file NOT FOUND at: {env_path}")
-
-# Debug environment variables
-print("="*60)
-print("🔍 ENVIRONMENT VARIABLES:")
-api_key = os.getenv('MAILGUN_API_KEY')
-domain = os.getenv('MAILGUN_DOMAIN')
-from_email = os.getenv('FROM_EMAIL')
-
-print(f"MAILGUN_API_KEY: {api_key[:20] + '...' if api_key else 'NOT SET'}")
-print(f"MAILGUN_DOMAIN: {domain if domain else 'NOT SET'}")
-print(f"FROM_EMAIL: {from_email if from_email else 'NOT SET'}")
-print("="*60)
 
 # Now import everything else
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_db
-from backend.config import APP_NAME
+from backend.config import APP_NAME, ALLOWED_ORIGINS
 
 # Import routers individually to avoid circular imports
 from backend.routers import auth
@@ -45,6 +30,17 @@ from backend.routers import alerts
 from backend.routers import notifications
 
 APP_VERSION = "1.0.0"
+
+
+def _is_email_service_enabled() -> bool:
+    """Email service is considered enabled when either SMTP or Mailgun is configured."""
+    smtp_enabled = bool(
+        os.getenv("SMTP_USERNAME")
+        and os.getenv("SMTP_PASSWORD")
+        and os.getenv("FROM_EMAIL")
+    )
+    mailgun_enabled = bool(os.getenv("MAILGUN_API_KEY"))
+    return smtp_enabled or mailgun_enabled
 
 # Import scheduler service
 from backend.services.scheduler_service import start_scheduler, stop_scheduler
@@ -83,10 +79,9 @@ except ImportError:
 try:
     from backend.routers import profile
     HAS_PROFILE = True
-    print("✅ Profile router imported successfully!")
 except ImportError:
     HAS_PROFILE = False
-    print("⚠️  Warning: Profile router not found. Profile features will be disabled.")
+    logger.warning("Profile router not found; profile features are disabled.")
 
 # Create FastAPI app
 app = FastAPI(
@@ -100,7 +95,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -131,35 +126,22 @@ if HAS_TIPS:
 
 if HAS_PROFILE:
     app.include_router(profile.router)
-    print("✅ Profile router loaded successfully!")
 
 # Startup event
 @app.on_event("startup")
 def startup_event():
-    """Initialize database and start scheduler on startup"""
-    
-    # ⚠️ COMMENTED OUT - Database must be created manually using recreate_db.py
-    # This prevents overwriting the correct schema on every startup
-    # init_db()
-    
-    print("✅ Using existing database (schema not recreated)")
-    
+    """Initialize database (safe create_all) and start scheduler on startup"""
+    # Safe: create_all only creates missing tables; it does not drop existing data.
+    init_db()
     start_scheduler()
-    print("=" * 60)
-    print(f"🚀 {APP_NAME} API started successfully!")
-    print("=" * 60)
-    mailgun_status = "✅ enabled" if os.getenv('MAILGUN_API_KEY') else "❌ disabled (check .env)"
-    print(f"📧 Automatic email alerts: {mailgun_status}")
-    print("⏰ Daily alerts scheduled: 9:00 AM")
-    print("👤 Profile management: ✅ enabled" if HAS_PROFILE else "👤 Profile management: ❌ disabled")
-    print("=" * 60)
+    email_status = "enabled" if _is_email_service_enabled() else "disabled"
+    logger.info("%s API started. email_alerts=%s profile=%s", APP_NAME, email_status, "enabled" if HAS_PROFILE else "disabled")
 
 # Shutdown event
 @app.on_event("shutdown")
 def shutdown_event():
     """Stop scheduler on shutdown"""
     stop_scheduler()
-    print("🛑 Scheduler stopped")
 
 # Root endpoint
 @app.get("/")
@@ -180,6 +162,7 @@ def root():
     if HAS_PROFILE:
         active_routers.append("profile")
     
+    email_enabled = _is_email_service_enabled()
     return {
         "message": f"{APP_NAME} API is running!",
         "version": APP_VERSION,
@@ -188,7 +171,7 @@ def root():
         "features": {
             "authentication": "✅ enabled",
             "automatic_alerts": "✅ enabled",
-            "email_notifications": "✅ enabled" if os.getenv('MAILGUN_API_KEY') else "❌ disabled",
+            "email_notifications": "✅ enabled" if email_enabled else "❌ disabled",
             "scheduler": "✅ running",
             "profile_management": "✅ enabled" if HAS_PROFILE else "❌ disabled"
         },
@@ -199,13 +182,14 @@ def root():
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
+    email_enabled = _is_email_service_enabled()
     return {
         "status": "healthy",
         "version": APP_VERSION,
         "database": "connected ✅",
         "scheduler": "running ✅",
         "authentication": "enabled ✅",
-        "email_service": "enabled ✅" if os.getenv('MAILGUN_API_KEY') else "disabled ❌",
+        "email_service": "enabled ✅" if email_enabled else "disabled ❌",
         "profile_management": "enabled ✅" if HAS_PROFILE else "disabled ❌"
     }
 
@@ -282,9 +266,5 @@ def api_info():
 # Run with uvicorn
 if __name__ == "__main__":
     import uvicorn
-    print("\n🔧 Starting server...")
-    print("📝 API Documentation: http://localhost:8001/docs")
-    print("🔍 API Info: http://localhost:8001/api/info")
-    print("\n")
     uvicorn.run(app, host="0.0.0.0", port=8001)
     

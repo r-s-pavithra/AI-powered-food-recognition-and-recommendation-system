@@ -11,6 +11,21 @@ import requests
 import json
 
 
+def _freeze_params(params: dict) -> tuple:
+    return tuple(sorted((k, str(v)) for k, v in (params or {}).items()))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_json(api_url: str, path: str, token: str, frozen_params: tuple):
+    resp = requests.get(
+        f"{api_url}{path}",
+        headers={"Authorization": f"Bearer {token}"},
+        params=dict(frozen_params),
+        timeout=15,
+    )
+    return resp.status_code, resp.json() if resp.content else None
+
+
 # ==========================================
 # PAGE CONFIG
 # ==========================================
@@ -23,6 +38,13 @@ if 'token' not in st.session_state:
 
 API_URL = "http://localhost:8001"
 headers = {"Authorization": f"Bearer {st.session_state.token}"}
+
+flash_success = st.session_state.pop("flash_success", None)
+flash_error = st.session_state.pop("flash_error", None)
+if flash_success:
+    st.success(flash_success)
+if flash_error:
+    st.error(flash_error)
 
 
 # ==========================================
@@ -37,7 +59,11 @@ def toggle_favorite(recipe_id: int):
         )
         if response.status_code == 200:
             result = response.json()
-            st.toast(f"{'⭐ Added to' if result['is_favorite'] else '💔 Removed from'} favorites!")
+            if result["is_favorite"]:
+                st.session_state.flash_success = "Added to favorites successfully."
+            else:
+                st.session_state.flash_success = "Removed from favorites successfully."
+            st.cache_data.clear()
             st.rerun()
         else:
             st.error("❌ Failed to update favorites")
@@ -150,7 +176,7 @@ def show_recipe_dialog(recipe_id: int):
                 instructions = json.loads(r['instructions'])
                 for idx, step in enumerate(instructions, 1):
                     st.markdown(
-                        f"""<div style='background:#1e1e2e;padding:10px 14px;
+                        f"""<div style='background:#1e1e2e;color:#f5f7ff;padding:10px 14px;
                         border-radius:8px;margin:6px 0;
                         border-left:4px solid #ff4b4b;line-height:1.6;'>
                         <strong>Step {idx}:</strong> {step}</div>""",
@@ -274,18 +300,20 @@ with tab1:
     with col_info:
         st.info("📦 Recipes ranked by your pantry — expiring items get priority!")
     with col_refresh:
-        if st.button("🔄 Refresh", key="refresh_rec", use_container_width=True):
+        if st.button("Refresh", key="refresh_rec", use_container_width=True):
+            st.cache_data.clear()
             st.rerun()
 
     try:
-        with st.spinner("🔍 Finding best recipes for you..."):
-            response = requests.get(
-                f"{API_URL}/api/recipes/recommendations/smart",
-                headers=headers, timeout=15
+        with st.spinner("Finding best recipes for you..."):
+            status, recommendations = _cached_get_json(
+                API_URL,
+                "/api/recipes/recommendations/smart",
+                st.session_state.token,
+                _freeze_params({})
             )
 
-        if response.status_code == 200:
-            recommendations = response.json()
+        if status == 200 and isinstance(recommendations, list):
 
             if recommendations:
                 expiring_recs = [r for r in recommendations if r.get('uses_expiring')]
@@ -379,71 +407,93 @@ with tab1:
 # ==========================================
 
 with tab2:
-    st.subheader("📚 Browse All Recipes")
+    st.subheader("Browse All Recipes")
 
-    # Filters
-    c1, c2, c3, c4, c5 = st.columns(5)
-    with c1:
-        cat_f = st.selectbox("🍽️ Category",
-            ["All", "breakfast", "lunch", "dinner", "snack", "beverage"],
-            key="t2_cat")
-    with c2:
-        cui_f = st.selectbox("🌍 Cuisine",
-            ["All", "south_indian", "north_indian", "chinese",
-             "italian", "american", "continental"],
-            key="t2_cui")
-    with c3:
-        dif_f = st.selectbox("⚖️ Difficulty",
-            ["All", "easy", "medium", "hard"],
-            key="t2_dif")
-    with c4:
-        diet_f = st.selectbox("🥗 Diet",
-            ["All", "vegetarian", "vegan", "non_vegetarian"],
-            key="t2_diet")
-    with c5:
-        maxt = st.number_input("⏱️ Max Time (min)",
-            min_value=0, max_value=180,
-            value=60, step=15, key="t2_time")
+    if "t2_offset" not in st.session_state:
+        st.session_state.t2_offset = 0
+    if "t2_params" not in st.session_state:
+        st.session_state.t2_params = {}
+    if "t2_limit" not in st.session_state:
+        st.session_state.t2_limit = 20
 
-    search_q = st.text_input(
-        "🔍 Search recipes",
-        placeholder="e.g., idli, biryani, pasta...",
-        key="t2_search"
-    )
+    with st.form("t2_filters", clear_on_submit=False):
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        with c1:
+            cat_f = st.selectbox("Category", ["All", "breakfast", "lunch", "dinner", "snack", "beverage"], key="t2_cat")
+        with c2:
+            cui_f = st.selectbox(
+                "Cuisine",
+                ["All", "south_indian", "north_indian", "chinese", "italian", "american", "continental"],
+                key="t2_cui",
+            )
+        with c3:
+            dif_f = st.selectbox("Difficulty", ["All", "easy", "medium", "hard"], key="t2_dif")
+        with c4:
+            diet_f = st.selectbox("Diet", ["All", "vegetarian", "vegan", "non_vegetarian"], key="t2_diet")
+        with c5:
+            maxt = st.number_input("Max Time (min)", min_value=0, max_value=180, value=60, step=15, key="t2_time")
+        with c6:
+            page_size = st.selectbox("Per page", [10, 20, 50], index=1, key="t2_page_size")
 
-    # Build params
-    params = {}
-    if cat_f  != "All": params['category']   = cat_f
-    if cui_f  != "All": params['cuisine']    = cui_f
-    if dif_f  != "All": params['difficulty'] = dif_f
-    if diet_f != "All": params['diet_type']  = diet_f
-    if maxt   > 0:      params['max_time']   = maxt
-    if search_q:        params['search']     = search_q
+        search_q = st.text_input("Search recipes", placeholder="e.g., idli, biryani, pasta...", key="t2_search")
+        apply_filters = st.form_submit_button("Apply Filters", type="primary", use_container_width=True)
+
+    if apply_filters:
+        params = {}
+        if cat_f != "All":
+            params["category"] = cat_f
+        if cui_f != "All":
+            params["cuisine"] = cui_f
+        if dif_f != "All":
+            params["difficulty"] = dif_f
+        if diet_f != "All":
+            params["diet_type"] = diet_f
+        if maxt > 0:
+            params["max_time"] = maxt
+        if search_q:
+            params["search"] = search_q
+
+        st.session_state.t2_params = params
+        st.session_state.t2_offset = 0
+        st.session_state.t2_limit = int(page_size)
+
+    params = dict(st.session_state.t2_params or {})
+    params["limit"] = st.session_state.t2_limit
+    params["offset"] = st.session_state.t2_offset
+
+    nav1, nav2, nav3 = st.columns([1, 2, 1])
+    with nav1:
+        prev_disabled = st.session_state.t2_offset <= 0
+        if st.button("Prev", disabled=prev_disabled, use_container_width=True, key="t2_prev"):
+            st.session_state.t2_offset = max(0, st.session_state.t2_offset - st.session_state.t2_limit)
+            st.rerun()
+    with nav2:
+        st.caption("Tip: change filters and click Apply to refresh results.")
+    with nav3:
+        if st.button("Next", use_container_width=True, key="t2_next"):
+            st.session_state.t2_offset += st.session_state.t2_limit
+            st.rerun()
 
     try:
-        resp = requests.get(
-            f"{API_URL}/api/recipes/",
-            headers=headers, params=params, timeout=10
-        )
-
-        if resp.status_code == 200:
-            recipes = resp.json()
-            st.write(f"**Found {len(recipes)} recipe(s)**")
-
+        status, recipes = _cached_get_json(API_URL, "/api/recipes/", st.session_state.token, _freeze_params(params))
+        if status == 200 and isinstance(recipes, list):
             if recipes:
+                start = st.session_state.t2_offset + 1
+                end = st.session_state.t2_offset + len(recipes)
+                st.write(f"Showing {start}-{end} recipes")
                 cols = st.columns(2)
                 for idx, recipe in enumerate(recipes):
                     with cols[idx % 2]:
-                        display_recipe_card(recipe, key_prefix=f"t2_{idx}")
+                        display_recipe_card(recipe, key_prefix=f"t2_{st.session_state.t2_offset}_{idx}")
             else:
-                st.info("No recipes found. Try adjusting your filters!")
-
+                if st.session_state.t2_offset > 0:
+                    st.info("No more recipes. Go back to previous page.")
+                else:
+                    st.info("No recipes found. Try adjusting your filters!")
         else:
-            st.error("❌ Failed to load recipes")
-
+            st.error("Failed to load recipes")
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-
+        st.error(f"Error: {str(e)}")
 
 # ==========================================
 # TAB 3: FAVORITES
@@ -495,67 +545,54 @@ with tab3:
 # ==========================================
 
 with tab4:
-    st.subheader("🔍 Search Recipes")
-    st.info("Search any recipe by name, ingredient, or cuisine!")
+    st.subheader("Search Recipes")
+    st.info("Search recipes by name. Press Search to run (no lag while typing).")
 
-    search_query = st.text_input(
-        "Search",
-        placeholder="e.g., idli, biryani, pasta, chicken curry...",
-        key="t4_search"
-    )
+    if "t4_query" not in st.session_state:
+        st.session_state.t4_query = ""
 
-    if search_query:
+    with st.form("t4_search_form", clear_on_submit=False):
+        search_query = st.text_input(
+            "Search",
+            placeholder="e.g., idli, biryani, pasta, chicken curry...",
+            key="t4_search"
+        )
+        submitted = st.form_submit_button("Search", type="primary", use_container_width=True)
+
+    if submitted:
+        st.session_state.t4_query = (search_query or "").strip()
+
+    if st.session_state.t4_query:
         try:
-            with st.spinner("🔍 Searching..."):
-                resp = requests.get(
-                    f"{API_URL}/api/recipes/",
-                    headers=headers,
-                    params={"search": search_query},
-                    timeout=10
-                )
-
-            if resp.status_code == 200:
-                results = resp.json()
-
+            params = {"search": st.session_state.t4_query, "limit": 20, "offset": 0}
+            status, results = _cached_get_json(API_URL, "/api/recipes/", st.session_state.token, _freeze_params(params))
+            if status == 200 and isinstance(results, list):
                 if results:
-                    st.success(f"✅ Found **{len(results)}** recipe(s) for **'{search_query}'**")
-
+                    st.success(f"Found {len(results)} recipe(s) for '{st.session_state.t4_query}'")
                     cols = st.columns(2)
                     for idx, recipe in enumerate(results):
                         with cols[idx % 2]:
                             display_recipe_card(recipe, key_prefix=f"t4_{idx}")
                 else:
-                    st.info(f"No recipes found for **'{search_query}'**.")
-                    st.markdown("""
-                    **💡 Try searching for:**
-                    - Idli, Dosa, Upma, Pongal
-                    - Biryani, Fried Rice, Pasta
-                    - Chicken, Egg, Paneer
-                    - Smoothie, Lassi, Coffee
-                    """)
-
+                    st.info(f"No recipes found for '{st.session_state.t4_query}'.")
             else:
-                st.error(f"❌ Search failed (Status: {resp.status_code})")
-
+                st.error(f"Search failed (Status: {status})")
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-
+            st.error(f"Error: {str(e)}")
     else:
-        # Show placeholder when no search
         st.markdown("---")
-        st.markdown("### 💡 Popular Searches")
-
-        popular = ["Biryani", "Dosa", "Pasta", "Chicken Curry",
-                   "Idli", "Fried Rice", "Smoothie", "Paneer"]
-
+        st.markdown("### Popular Searches")
+        popular = ["Biryani", "Dosa", "Pasta", "Chicken Curry", "Idli", "Fried Rice", "Smoothie", "Paneer"]
         cols = st.columns(4)
         for idx, term in enumerate(popular):
             with cols[idx % 4]:
-                if st.button(f"🔍 {term}", key=f"pop_search_{idx}",
-                             use_container_width=True):
-                    st.session_state.t4_search_term = term
+                if st.button(term, key=f"pop_search_{idx}", use_container_width=True):
+                    st.session_state.t4_search = term
+                    st.session_state.t4_query = term
+                    st.cache_data.clear()
                     st.rerun()
 
-        # If a popular term was clicked
-        if 'T4_search_term' in st.session_state:
-            del st.session_state.t4_search_term
+
+
+
+

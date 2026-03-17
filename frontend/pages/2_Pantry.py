@@ -18,6 +18,13 @@ if not token:
 
 st.title("📦 My Pantry")
 
+flash_success = st.session_state.pop("flash_success", None)
+flash_error = st.session_state.pop("flash_error", None)
+if flash_success:
+    st.success(flash_success)
+if flash_error:
+    st.error(flash_error)
+
 
 # Fetch pantry items
 try:
@@ -94,7 +101,7 @@ try:
                                 headers={"Authorization": f"Bearer {token}"}
                             )
                             if delete_response.status_code == 200:
-                                st.success("✅ Item deleted!")
+                                st.session_state.flash_success = "Item deleted successfully."
                                 st.rerun()
                             else:
                                 st.error("❌ Failed to delete item")
@@ -156,11 +163,11 @@ try:
                                         f"{API_URL}/api/pantry/items/{item['id']}",
                                         headers={"Authorization": f"Bearer {token}"}
                                     )
-                                    st.success("✅ Item marked as used! 🎉")
+                                    st.session_state.flash_success = "Item marked as used successfully."
                                     del st.session_state[f"used_modal_{item['id']}"]
                                     st.rerun()
                                 else:
-                                    st.error("❌ Failed to log item")
+                                    st.error("❌ Failed to mark item as used")
                             
                             if cancel:
                                 del st.session_state[f"used_modal_{item['id']}"]
@@ -206,7 +213,7 @@ try:
                                 )
                                 
                                 if response.status_code == 200:
-                                    st.success("✅ Item marked as wasted")
+                                    st.session_state.flash_success = "Item marked as wasted successfully."
                                     del st.session_state[f"waste_modal_{item['id']}"]
                                     st.rerun()
                                 else:

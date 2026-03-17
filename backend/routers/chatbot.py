@@ -3,7 +3,7 @@ Chatbot Router - FIXED to accept and forward conversation history
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 from backend.database import get_db
 from backend.models.user import User
@@ -24,7 +24,7 @@ class ChatRequest(BaseModel):
     context: Optional[str] = None
     include_pantry: bool = True
     include_profile: bool = True
-    chat_history: Optional[List[ChatMessage]] = []  # ✅ NEW FIELD
+    chat_history: List[ChatMessage] = Field(default_factory=list)  # ✅ NEW FIELD
 
 
 class ChatResponse(BaseModel):

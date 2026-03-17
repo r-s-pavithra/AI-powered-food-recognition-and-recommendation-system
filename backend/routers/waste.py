@@ -7,7 +7,7 @@ from backend.database import get_db
 from backend.models.user import User
 from backend.models.waste_log import WasteLog
 from backend.routers.auth import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 router = APIRouter(prefix="/api/waste", tags=["Waste Tracking"])
@@ -48,6 +48,18 @@ class WasteStats(BaseModel):
     items_by_reason: dict
     waste_trend: List[dict]
     top_wasted_items: List[dict]
+
+
+class SavedItemCreate(BaseModel):
+    pantry_item_id: Optional[int] = None
+    product_name: str = Field(..., min_length=1)
+    category: str = Field(..., min_length=1)
+    quantity: int = Field(..., ge=1)
+    unit: str = Field(..., min_length=1)
+    estimated_cost: float = Field(0.0, ge=0)
+    expiry_date: date
+    used_date: date
+    days_before_expiry: int = 0
 
 
 # Add waste log
@@ -337,25 +349,25 @@ def auto_detect_expired_items(
 # Log saved item (used before expiry)
 @router.post("/log-saved", status_code=201)
 def log_saved_item(
-    save_data: dict,
+    save_data: SavedItemCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Log an item that was used/consumed before expiry"""
-    from datetime import datetime
     from backend.models.waste_log import ItemSaved
-    
+
+    data = save_data.model_dump()
     saved_item = ItemSaved(
         user_id=current_user.id,
-        pantry_item_id=save_data.get("pantry_item_id"),
-        product_name=save_data["product_name"],
-        category=save_data["category"],
-        quantity=save_data["quantity"],
-        unit=save_data["unit"],
-        estimated_cost=save_data.get("estimated_cost", 0.0),
-        expiry_date=datetime.strptime(save_data["expiry_date"], "%Y-%m-%d").date(),
-        used_date=datetime.strptime(save_data["used_date"], "%Y-%m-%d").date(),
-        days_before_expiry=save_data.get("days_before_expiry", 0)
+        pantry_item_id=data.get("pantry_item_id"),
+        product_name=data["product_name"],
+        category=data["category"],
+        quantity=data["quantity"],
+        unit=data["unit"],
+        estimated_cost=data.get("estimated_cost", 0.0),
+        expiry_date=data["expiry_date"],
+        used_date=data["used_date"],
+        days_before_expiry=data.get("days_before_expiry", 0)
     )
     
     db.add(saved_item)

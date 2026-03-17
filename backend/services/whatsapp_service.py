@@ -1,7 +1,6 @@
 """
 WhatsApp Service using Twilio API - Complete Implementation
 """
-from twilio.rest import Client
 from typing import List
 from datetime import datetime
 import os
@@ -9,6 +8,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 import time
 import logging
+import re
+
+try:
+    from twilio.rest import Client
+except ImportError:
+    Client = None
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +43,9 @@ else:
     logger.info("✅ Twilio WhatsApp configured successfully")
     logger.info(f"📱 WhatsApp From: {TWILIO_WHATSAPP_FROM}")
 
+if Client is None:
+    logger.warning("Twilio package not installed; WhatsApp sending is disabled.")
+
 def mask_phone(phone: str) -> str:
     """Mask phone number for logging privacy"""
     if len(phone) > 4:
@@ -50,21 +58,41 @@ def format_phone_number(phone: str) -> str:
     Accepts: +919876543210, 919876543210, 9876543210
     Returns: whatsapp:+919876543210
     """
-    # Remove any whitespace
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    
-    # Add + if not present
-    if not phone.startswith("+"):
-        if phone.startswith("91"):  # India
-            phone = "+" + phone
-        else:
-            phone = "+91" + phone  # Assume India if no country code
-    
-    # Add whatsapp: prefix
-    if not phone.startswith("whatsapp:"):
-        phone = "whatsapp:" + phone
-    
-    return phone
+    phone = (phone or "").strip()
+    if not phone:
+        raise ValueError("Phone number is empty")
+
+    # Allow users to store either "whatsapp:+..." or plain phone values.
+    if phone.lower().startswith("whatsapp:"):
+        phone = phone.split(":", 1)[1]
+
+    # Keep digits and optional leading plus only.
+    phone = re.sub(r"[^\d+]", "", phone)
+    if phone.startswith("++"):
+        phone = phone.lstrip("+")
+
+    if phone.startswith("+"):
+        normalized = phone
+    elif phone.startswith("91"):
+        normalized = "+" + phone
+    else:
+        normalized = "+91" + phone  # Assume India if no country code
+
+    # Basic E.164 guardrail
+    if not re.fullmatch(r"\+\d{8,15}", normalized):
+        raise ValueError(f"Invalid phone number format: {normalized}")
+
+    return f"whatsapp:{normalized}"
+
+
+def format_whatsapp_sender(from_value: str) -> str:
+    """Ensure Twilio sender is always in whatsapp:+E164 format."""
+    sender = (from_value or "").strip()
+    if not sender:
+        raise ValueError("TWILIO_WHATSAPP_FROM is empty")
+    if not sender.lower().startswith("whatsapp:"):
+        sender = f"whatsapp:{sender}"
+    return sender
 
 def send_whatsapp_with_retry(to_phone: str, message: str, max_retries: int = 3):
     """
@@ -72,13 +100,19 @@ def send_whatsapp_with_retry(to_phone: str, message: str, max_retries: int = 3):
     """
     
     # Validate configuration
+    if Client is None:
+        return {"success": False, "error": "Twilio package is not installed"}
+
     if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_WHATSAPP_FROM:
         error_msg = "Twilio WhatsApp not configured. Check TWILIO credentials in .env"
         logger.error(f"❌ {error_msg}")
         return {"success": False, "error": error_msg}
     
-    # Format phone number
-    to_phone_formatted = format_phone_number(to_phone)
+    try:
+        to_phone_formatted = format_phone_number(to_phone)
+        from_phone_formatted = format_whatsapp_sender(TWILIO_WHATSAPP_FROM)
+    except ValueError as validation_error:
+        return {"success": False, "error": str(validation_error)}
     
     for attempt in range(1, max_retries + 1):
         try:
@@ -89,7 +123,7 @@ def send_whatsapp_with_retry(to_phone: str, message: str, max_retries: int = 3):
             
             # Send message
             message_obj = client.messages.create(
-                from_=TWILIO_WHATSAPP_FROM,
+                from_=from_phone_formatted,
                 body=message,
                 to=to_phone_formatted
             )

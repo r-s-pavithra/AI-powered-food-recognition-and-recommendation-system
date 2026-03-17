@@ -4,8 +4,9 @@ Handles CRUD operations for pantry items, barcode scanning
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Optional
 from datetime import date
+from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.models.user import User
@@ -15,10 +16,34 @@ from backend.routers.auth import get_current_user
 from backend.utils.barcode_scanner import decode_barcode, enhance_image_for_barcode
 # ✅ FIXED: Import BarcodeService instead of fetch_product_info
 from backend.services.barcode_service import BarcodeService
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from backend.services.food_recognition import FoodRecognitionService
-from backend.routers.auth import get_current_user
-from backend.models.user import User
+from backend.services.food_recognition import FoodRecognitionService  # 🔥 NOW HAS GEMINI!
+
+
+
+class ModelSupportInfo(BaseModel):
+    enabled: Optional[bool] = None
+    success: Optional[bool] = None
+    message: Optional[str] = None
+    model_path: Optional[str] = None
+    labels_path: Optional[str] = None
+    labels_count: Optional[int] = None
+    labels: List[str] = Field(default_factory=list)
+    labels_sample: List[str] = Field(default_factory=list)
+    api_url: Optional[str] = None
+    model_id: Optional[str] = None
+    version_id: Optional[str] = None
+    user_id: Optional[str] = None
+    app_id: Optional[str] = None
+
+
+class SupportedRecognitionItemsResponse(BaseModel):
+    gemini: Optional[ModelSupportInfo] = None  # 🔥 NEW
+    yolo: Optional[ModelSupportInfo] = None
+    logmeal: Optional[ModelSupportInfo] = None
+    clarifai: Optional[ModelSupportInfo] = None
+    google_vision: Optional[ModelSupportInfo] = None
+
 
 router = APIRouter(prefix="/api/pantry", tags=["Pantry"])
 barcode_service = BarcodeService()
@@ -250,12 +275,10 @@ async def scan_barcode(
         barcode_type = result.get('type')
         
         # ✅ FIXED: Use BarcodeService with 4 APIs instead of fetch_product_info
-        print(f"🔍 Looking up barcode: {barcode}")
         product_info = BarcodeService.get_product_info(barcode)
         
         if product_info:
             # Product found in one of the 4 APIs
-            print(f"✅ Product found: {product_info.get('product_name')}")
             return {
                 "success": True,
                 "barcode": barcode,
@@ -264,7 +287,6 @@ async def scan_barcode(
             }
         else:
             # Barcode detected but product not found in any API
-            print(f"❌ Product not found in any database for barcode: {barcode}")
             return {
                 "success": True,
                 "barcode": barcode,
@@ -274,7 +296,6 @@ async def scan_barcode(
             }
     
     except Exception as e:
-        print(f"❌ Error in scan_barcode: {str(e)}")
         return {
             "success": False,
             "error": f"Error processing image: {str(e)}"
@@ -304,6 +325,16 @@ async def recognize_food(
     
     # Return result for user to EDIT/CONFIRM before adding to pantry
     return FoodRecognitionResponse(**result)
+
+
+@router.get("/recognize-food/supported-items", response_model=SupportedRecognitionItemsResponse)
+def get_supported_recognition_items(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Return list of items/classes supported by the currently loaded YOLO model.
+    """
+    return food_recognition_service.get_supported_items()
 
 
 
@@ -357,3 +388,4 @@ def mark_as_consumed(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to mark item as consumed: {str(e)}"
         )
+

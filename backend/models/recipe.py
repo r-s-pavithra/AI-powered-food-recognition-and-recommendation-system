@@ -1,16 +1,7 @@
-from sqlalchemy import Column, Integer, String, Text, Float, Boolean, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, Text, Float, Boolean
 from sqlalchemy.orm import relationship
 from backend.database import Base
 from backend.models.user import user_recipe_favorites
-
-
-# Many-to-many relationship table for user favorites
-user_favorites = Table(
-    'user_favorites',
-    Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
-    Column('recipe_id', Integer, ForeignKey('recipes.id'), primary_key=True)
-)
 
 
 class Recipe(Base):

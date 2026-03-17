@@ -7,7 +7,7 @@ from backend.models.recipe import Recipe
 from backend.models.pantry_item import PantryItem
 from backend.routers.auth import get_current_user
 from backend.services.recipe_service import RecipeService
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import json
 
 
@@ -42,7 +42,7 @@ class RecipeBase(BaseModel):
 class RecipeResponse(RecipeBase):
     id: int
     is_favorite: bool = False
-    matching_ingredients: List[str] = []
+    matching_ingredients: List[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -61,8 +61,10 @@ class RecipeRecommendation(BaseModel):
 # HELPER: Build RecipeResponse safely
 # ==========================================
 
-def build_recipe_response(recipe: Recipe, user_favorites: List[int], matching: List[str] = []) -> RecipeResponse:
+def build_recipe_response(recipe: Recipe, user_favorites: List[int], matching: Optional[List[str]] = None) -> RecipeResponse:
     try:
+        if matching is None:
+            matching = []
         data = {
             "id": recipe.id,
             "name": recipe.name,
@@ -103,10 +105,13 @@ def get_recipes(
     diet_type: Optional[str] = None,       # ✅ NEW filter
     max_time: Optional[int] = None,
     search: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all recipes with optional filters"""
+    RecipeService.ensure_csv_recipes_seeded(db)
     query = db.query(Recipe)
 
     if category:
@@ -122,7 +127,7 @@ def get_recipes(
     if search:
         query = query.filter(Recipe.name.ilike(f"%{search}%"))
 
-    recipes = query.all()
+    recipes = query.order_by(Recipe.id.desc()).offset(offset).limit(limit).all()
 
     try:
         user_favorites = [r.id for r in current_user.favorite_recipes]
@@ -143,16 +148,9 @@ def get_recommendations(
 ):
     """Get smart recipe recommendations based on pantry + expiry priority"""
 
-    print("\n" + "="*60)
-    print("🎯 SMART RECIPE RECOMMENDATION")
-    print("="*60)
-
     # Get user preferences
     diet_type = getattr(current_user, 'dietary_preferences', None)
     health_goal = getattr(current_user, 'health_goal', None)
-
-    print(f"👤 User: {current_user.email}")
-    print(f"🥗 Diet: {diet_type} | 🎯 Goal: {health_goal}")
 
     try:
         user_favorites = [r.id for r in current_user.favorite_recipes]
@@ -167,9 +165,6 @@ def get_recommendations(
         health_goal=health_goal,
         min_results=5
     )
-
-    print(f"✅ Found {len(results)} recommendations")
-    print("="*60 + "\n")
 
     recommendations = []
     for item in results:

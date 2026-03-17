@@ -44,7 +44,7 @@ class UserResponse(UserBase):
     email_notifications: bool = True
     daily_alerts: bool = True
     recipe_suggestions: bool = True
-    whatsapp_notifications: bool = True
+    whatsapp_notifications: bool = False
     
     created_at: datetime
     

@@ -47,6 +47,13 @@ headers = {"Authorization": f"Bearer {st.session_state.token}"}
 st.title("👤 My Profile")
 st.write("Manage your personal information, health data, and preferences")
 
+flash_success = st.session_state.pop("flash_success", None)
+flash_error = st.session_state.pop("flash_error", None)
+if flash_success:
+    st.success(flash_success)
+if flash_error:
+    st.error(flash_error)
+
 
 # ==========================================
 # HELPER FUNCTIONS
@@ -321,7 +328,7 @@ with tab1:
                             )
                         
                         if response.status_code == 200:
-                            st.success("✅ Profile updated successfully!")
+                            st.session_state.flash_success = "Profile updated successfully."
                             st.session_state.edit_basic = False
                             st.balloons()
                             time.sleep(1)
@@ -505,7 +512,7 @@ with tab2:
                         )
                     
                     if response.status_code == 200:
-                        st.success("✅ Health info updated successfully!")
+                        st.session_state.flash_success = "Health info updated successfully."
                         st.session_state.edit_health = False
                         st.balloons()
                         time.sleep(1)
@@ -619,7 +626,7 @@ with tab3:
                         )
                     
                     if response.status_code == 200:
-                        st.success("✅ Dietary preferences updated successfully!")
+                        st.session_state.flash_success = "Dietary preferences updated successfully."
                         st.session_state.edit_dietary = False
                         st.balloons()
                         time.sleep(1)
@@ -672,7 +679,7 @@ with tab4:
             "📱 **WhatsApp Notification Notice:**\n\n"
             "WhatsApp notifications are currently powered by **Twilio Sandbox** and are only available "
             "for users who have joined the sandbox. To receive WhatsApp alerts, you must first send "
-            "**`join <sandbox-keyword>`** to **+1 415 523 8886** on WhatsApp."
+            "**`join trap-atmosphere`** to **+1 415 523 8886** on WhatsApp."
         )
 
         
@@ -713,7 +720,7 @@ with tab4:
                 "⚠️ **WhatsApp Sandbox Mode Notice:**\n\n"
                 "WhatsApp notifications are currently in **Twilio Sandbox** mode.\n\n"
                 "✅ This feature works **only for users who have joined the sandbox**.\n\n"
-                "📲 **To join:** Open WhatsApp and send `join <sandbox-keyword>` to **+1 415 523 8886**\n\n"
+                "📲 **To join:** Open WhatsApp and send `join trap-atmosphere` to **+1 415 523 8886**\n\n"
                 "Once joined, you will automatically receive expiry alerts on WhatsApp! 🎉"
             )
             
@@ -730,7 +737,7 @@ with tab4:
                     st.info(f"✅ WhatsApp will be sent to: {current_phone}")
                     st.success(
                         "✅ Make sure you have joined the sandbox:\n\n"
-                        "Send **`join <sandbox-keyword>`** to **+1 415 523 8886** on WhatsApp"
+                        "Send **`join trap-atmosphere`** to **+1 415 523 8886** on WhatsApp"
                     )
                 else:
                     st.warning("⚠️ Please add your phone number in 'Basic Info' tab to receive WhatsApp notifications")
@@ -770,7 +777,7 @@ with tab4:
                         )
                     
                     if response.status_code == 200:
-                        st.success("✅ Notification settings updated successfully!")
+                        st.session_state.flash_success = "Notification settings updated successfully."
                         st.session_state.edit_notifications = False
                         time.sleep(1)
                         st.rerun()
@@ -816,7 +823,7 @@ with tab4:
                 # ✅ SANDBOX REMINDER BEFORE SENDING
                 st.info(
                     "📲 **Reminder:** Make sure you have joined the Twilio Sandbox!\n\n"
-                    "Send **`join <sandbox-keyword>`** to **+1 415 523 8886** on WhatsApp first."
+                    "Send **`join trap-atmosphere`** to **+1 415 523 8886** on WhatsApp first."
                 )
                 with st.spinner("📱 Sending test WhatsApp..."):
                     try:
@@ -876,7 +883,7 @@ with tab4:
                             )
                         
                         if response.status_code == 200:
-                            st.success("✅ Password changed successfully!")
+                            st.session_state.flash_success = "Password changed successfully."
                             st.info("Please login again with your new password")
                             time.sleep(2)
                             st.session_state.clear()
@@ -928,7 +935,7 @@ with st.expander("⚠️ Danger Zone - Account Deletion", expanded=False):
                     )
                 
                 if response.status_code == 200:
-                    st.success("✅ Account deleted successfully")
+                    st.session_state.flash_success = "Account deleted successfully."
                     st.info("You will be logged out in 3 seconds...")
                     time.sleep(3)
                     st.session_state.clear()

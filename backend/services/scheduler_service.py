@@ -38,6 +38,8 @@ logger.info("="*60)
 logger.info("📧 EMAIL & WHATSAPP SERVICE CONFIGURATION:")
 logger.info(f"   Mailgun Domain: {os.getenv('MAILGUN_DOMAIN')}")
 logger.info(f"   Email API Key Set: {bool(os.getenv('MAILGUN_API_KEY'))}")
+smtp_ready = bool(os.getenv("SMTP_USERNAME") and os.getenv("SMTP_PASSWORD") and os.getenv("FROM_EMAIL"))
+logger.info(f"   Gmail SMTP Ready: {smtp_ready}")
 logger.info(f"   From Email: {os.getenv('FROM_EMAIL')}")
 twilio_sid = os.getenv('TWILIO_ACCOUNT_SID')
 logger.info(f"   Twilio Account SID: {twilio_sid[:10] + '...' if twilio_sid else 'NOT SET'}")
@@ -47,6 +49,20 @@ logger.info("="*60)
 
 # Create scheduler instance
 scheduler = BackgroundScheduler()
+
+
+def _should_send_whatsapp(user: User) -> bool:
+    """
+    WhatsApp at 9 AM should go with email alerts for users who:
+    - have a phone number
+    - have daily alerts enabled
+    - have WhatsApp notifications enabled
+    """
+    return bool(
+        user.phone
+        and getattr(user, "daily_alerts", True)
+        and getattr(user, "whatsapp_notifications", False)
+    )
 
 
 def check_and_send_alerts():
@@ -106,8 +122,8 @@ def check_and_send_alerts():
                     else:
                         logger.error(f"❌ Failed to send email to {user.email}: {email_result.get('error')}")
                 
-                # ✅ NEW: Send WHATSAPP alert if enabled
-                if user.whatsapp_notifications and user.phone:
+                # ✅ Send WHATSAPP alert alongside email at 9 AM
+                if _should_send_whatsapp(user):
                     logger.info(f"📱 User has WhatsApp enabled, sending alert to {user.phone}")
                     whatsapp_result = send_expiry_alert_whatsapp(user.phone, user.name, items_data)
                     if whatsapp_result.get('success'):
@@ -115,10 +131,12 @@ def check_and_send_alerts():
                     else:
                         logger.error(f"❌ Failed to send WhatsApp: {whatsapp_result.get('error')}")
                 else:
-                    if not user.whatsapp_notifications:
-                        logger.info(f"ℹ️ WhatsApp disabled for {user.email}")
-                    elif not user.phone:
-                        logger.warning(f"⚠️ WhatsApp enabled but no phone number for {user.email}")
+                    if not user.phone:
+                        logger.warning(f"⚠️ WhatsApp skipped (no phone number) for {user.email}")
+                    elif not getattr(user, "daily_alerts", True):
+                        logger.info(f"ℹ️ WhatsApp skipped (daily alerts disabled) for {user.email}")
+                    elif not getattr(user, "whatsapp_notifications", False):
+                        logger.info(f"ℹ️ WhatsApp skipped (whatsapp_notifications disabled) for {user.email}")
                 
                 # Create in-app notification
                 notification = Notification(
@@ -163,8 +181,8 @@ def check_and_send_alerts():
                     else:
                         logger.error(f"❌ Failed to send critical email to {user.email}: {email_result.get('error')}")
                 
-                # ✅ NEW: Send WHATSAPP alert if enabled
-                if user.whatsapp_notifications and user.phone:
+                # ✅ Send WHATSAPP alert alongside email at 9 AM
+                if _should_send_whatsapp(user):
                     logger.info(f"📱 Sending CRITICAL WhatsApp alert to {user.phone}")
                     whatsapp_result = send_expiry_alert_whatsapp(user.phone, user.name, items_data)
                     if whatsapp_result.get('success'):
@@ -253,8 +271,9 @@ def stop_scheduler():
     Called when the application shuts down
     """
     try:
-        scheduler.shutdown()
-        logger.info("🛑 Scheduler stopped successfully")
+        if scheduler.running:
+            scheduler.shutdown()
+            logger.info("🛑 Scheduler stopped successfully")
     except Exception as e:
         logger.error(f"❌ Error stopping scheduler: {str(e)}")
 
@@ -269,48 +288,65 @@ def test_alerts_now():
     logger.info("="*60)
     
     db = SessionLocal()
-    
     try:
-        # Statistics
+        users = db.query(User).all()
+        logger.info(f"Found {len(users)} users to test")
+        return _run_test_for_users(db, users, message="Test alert check completed")
+    finally:
+        db.close()
+
+
+def test_alerts_for_user(user_id: int):
+    """
+    Run test alert workflow for exactly one user.
+    """
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return {
+                "success": False,
+                "message": "User not found",
+                "items_checked": 0,
+                "notifications_created": 0,
+                "emails_sent": 0,
+                "whatsapp_sent": 0,
+            }
+        return _run_test_for_users(db, [user], message="Test alert check completed for current user")
+    finally:
+        db.close()
+
+
+def _run_test_for_users(db: Session, users, message: str):
+    """
+    Shared implementation for test alert checks.
+    """
+    try:
         total_items_checked = 0
         notifications_created = 0
         emails_sent = 0
-        whatsapp_sent = 0  # ✅ ADDED
-        
-        # Get all users
-        users = db.query(User).all()
-        
-        logger.info(f"Found {len(users)} users to test")
-        
+        whatsapp_sent = 0
+
         for user in users:
             today = datetime.now().date()
-            
-            # Count total items for this user
-            user_items = db.query(PantryItem).filter(
-                PantryItem.user_id == user.id
-            ).count()
+
+            user_items = db.query(PantryItem).filter(PantryItem.user_id == user.id).count()
             total_items_checked += user_items
-            
             logger.info(f"User {user.email}: {user_items} items in pantry")
-            
-            # Check for items expiring in 7 days or less
+
             seven_days = today + timedelta(days=7)
             items_expiring = db.query(PantryItem).filter(
                 PantryItem.user_id == user.id,
                 PantryItem.expiry_date <= seven_days,
                 PantryItem.expiry_date >= today
             ).all()
-            
+
             if items_expiring:
-                logger.info(f"Found {len(items_expiring)} expiring items for {user.email}")
-                
-                # Categorize items
                 critical_items = []
                 warning_items = []
-                
+
                 for item in items_expiring:
                     days_left = (item.expiry_date - today).days
-                    
                     item_data = {
                         "product_name": item.product_name,
                         "category": item.category,
@@ -319,101 +355,64 @@ def test_alerts_now():
                         "unit": item.unit,
                         "days_left": days_left
                     }
-                    
                     if days_left <= 3:
                         critical_items.append(item_data)
                     else:
                         warning_items.append(item_data)
-                
-                # Create notifications
+
                 if critical_items:
-                    notification = Notification(
+                    db.add(Notification(
                         user_id=user.id,
                         title=f"🔴 URGENT: {len(critical_items)} Items Expiring Soon!",
                         message=f"{len(critical_items)} item(s) expiring in ≤3 days! Use them NOW!",
                         type="critical"
-                    )
-                    db.add(notification)
+                    ))
                     notifications_created += 1
-                    logger.info(f"Created CRITICAL notification for {user.email}")
-                
+
                 if warning_items:
-                    notification = Notification(
+                    db.add(Notification(
                         user_id=user.id,
                         title=f"🟡 Reminder: {len(warning_items)} Items Expiring This Week",
                         message=f"{len(warning_items)} item(s) expiring within 7 days. Plan to use them!",
                         type="warning"
-                    )
-                    db.add(notification)
+                    ))
                     notifications_created += 1
-                    logger.info(f"Created WARNING notification for {user.email}")
-                
-                # ✅ Send EMAIL with ALL expiring items
+
                 items_data = critical_items + warning_items
-                logger.info(f"Sending email with {len(items_data)} items to {user.email}")
-                
+
                 if user.email_alerts_enabled:
                     email_result = send_expiry_alert(user.email, user.name, items_data)
                     if email_result.get('success'):
-                        logger.info(f"✅ Email sent to {user.email}")
                         emails_sent += 1
-                    else:
-                        logger.error(f"❌ Failed to send email: {email_result.get('error')}")
-                
-                # ✅ NEW: Send WHATSAPP if enabled
-                if user.whatsapp_notifications and user.phone:
-                    logger.info(f"📱 Sending TEST WhatsApp to {user.phone}")
+
+                if _should_send_whatsapp(user):
                     whatsapp_result = send_expiry_alert_whatsapp(user.phone, user.name, items_data)
                     if whatsapp_result.get('success'):
-                        logger.info(f"✅ WhatsApp sent to {user.phone}")
                         whatsapp_sent += 1
-                    else:
-                        logger.error(f"❌ Failed to send WhatsApp: {whatsapp_result.get('error')}")
-                else:
-                    if not user.whatsapp_notifications:
-                        logger.info(f"ℹ️ WhatsApp disabled for {user.email}")
-                    elif not user.phone:
-                        logger.warning(f"⚠️ WhatsApp enabled but no phone for {user.email}")
-            else:
-                logger.info(f"No expiring items for {user.email}")
-            
-            # Check expired items
+
             items_expired = db.query(PantryItem).filter(
                 PantryItem.user_id == user.id,
                 PantryItem.expiry_date < today
             ).all()
-            
+
             if items_expired:
-                notification = Notification(
+                db.add(Notification(
                     user_id=user.id,
                     title=f"🗑️ {len(items_expired)} Expired Items",
                     message=f"{len(items_expired)} item(s) have expired. Consider removing them.",
                     type="warning"
-                )
-                db.add(notification)
+                ))
                 notifications_created += 1
-                logger.info(f"Created EXPIRED notification for {user.email}")
-        
-        # Commit all changes
+
         db.commit()
-        
-        logger.info("="*60)
-        logger.info(f"✅ TEST COMPLETED")
-        logger.info(f"   Items Checked: {total_items_checked}")
-        logger.info(f"   Notifications Created: {notifications_created}")
-        logger.info(f"   Emails Sent: {emails_sent}")
-        logger.info(f"   WhatsApp Sent: {whatsapp_sent}")  # ✅ ADDED
-        logger.info("="*60)
-        
         return {
             "success": True,
-            "message": "Test alert check completed",
+            "message": message,
             "items_checked": total_items_checked,
             "notifications_created": notifications_created,
             "emails_sent": emails_sent,
-            "whatsapp_sent": whatsapp_sent  # ✅ ADDED
+            "whatsapp_sent": whatsapp_sent
         }
-    
     except Exception as e:
         logger.error(f"❌ Error in test alert check: {str(e)}")
         db.rollback()
@@ -425,9 +424,6 @@ def test_alerts_now():
             "emails_sent": 0,
             "whatsapp_sent": 0
         }
-    
-    finally:
-        db.close()
 
 
 def get_scheduler_status():

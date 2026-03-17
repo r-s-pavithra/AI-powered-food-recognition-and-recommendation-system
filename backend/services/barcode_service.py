@@ -6,6 +6,9 @@ import requests
 from typing import Optional, Dict
 import os
 from dotenv import load_dotenv
+import logging
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -25,6 +28,9 @@ class BarcodeService:
     EDAMAM_FOOD_URL = "https://api.edamam.com/api/food-database/v2/parser"
     EDAMAM_APP_ID = os.getenv("EDAMAM_APP_ID", "")
     EDAMAM_APP_KEY = os.getenv("EDAMAM_APP_KEY", "")
+
+    # ✅ ADDED: Name Tag so APIs don't block you as a generic bot
+    HEADERS = {"User-Agent": "AIFoodTracker_StudentProject/1.0"}
     
     @staticmethod
     def get_product_info(barcode: str) -> Optional[Dict]:
@@ -32,37 +38,37 @@ class BarcodeService:
         Try 4 barcode APIs, then enhance with Edamam nutrition
         Returns enriched product information
         """
-        print(f"🔍 Searching barcode: {barcode}")
+        logger.info(f"🔍 Searching barcode: {barcode}")
         
         # Try API 1: Open Food Facts
         result = BarcodeService._try_open_food_facts(barcode)
         if result:
-            print(f"✅ Found in Open Food Facts")
+            logger.info("✅ Found in Open Food Facts")
             BarcodeService._enhance_with_edamam(result)
             return result
         
         # Try API 2: UPC Database
         result = BarcodeService._try_upc_database(barcode)
         if result:
-            print(f"✅ Found in UPC Database")
+            logger.info("✅ Found in UPC Database")
             BarcodeService._enhance_with_edamam(result)
             return result
         
         # Try API 3: EAN Search
         result = BarcodeService._try_ean_search(barcode)
         if result:
-            print(f"✅ Found in EAN Search")
+            logger.info("✅ Found in EAN Search")
             BarcodeService._enhance_with_edamam(result)
             return result
         
         # Try API 4: Digit Eyes
         result = BarcodeService._try_digit_eyes(barcode)
         if result:
-            print(f"✅ Found in Digit Eyes")
+            logger.info("✅ Found in Digit Eyes")
             BarcodeService._enhance_with_edamam(result)
             return result
-        
-        print(f"❌ Product not found in any database")
+
+        logger.info("❌ Product not found in any database")
         return None
     
     # ============================================
@@ -75,7 +81,7 @@ class BarcodeService:
         Modifies product_data in place
         """
         if not BarcodeService.EDAMAM_APP_ID or not BarcodeService.EDAMAM_APP_KEY:
-            print("ℹ️  Edamam keys not configured - skipping enhancement")
+            logger.debug("Edamam keys not configured - skipping enhancement")
             return
         
         try:
@@ -91,10 +97,12 @@ class BarcodeService:
                 "nutrition-type": "logging"
             }
             
+            # ✅ UPDATED TIMEOUT TO 15
             response = requests.get(
                 BarcodeService.EDAMAM_FOOD_URL,
                 params=params,
-                timeout=5
+                headers=BarcodeService.HEADERS,
+                timeout=15
             )
             
             if response.status_code == 200:
@@ -114,11 +122,11 @@ class BarcodeService:
                             "fiber": round(nutrients.get("FIBTG", 0), 1),
                             "source": "Edamam"
                         }
-                        print(f"✨ Enhanced with Edamam nutrition data")
+                        logger.debug("Enhanced barcode result with Edamam nutrition data")
                         product_data["edamam_enhanced"] = True
                     
         except Exception as e:
-            print(f"Edamam enhancement error: {e}")
+            logger.warning("Edamam enhancement error: %s", e)
     
     # ============================================
     # API 1: Open Food Facts
@@ -128,7 +136,8 @@ class BarcodeService:
         """FREE - Unlimited - No key needed"""
         try:
             url = f"{BarcodeService.OPEN_FOOD_FACTS_URL}/{barcode}.json"
-            response = requests.get(url, timeout=5)
+            # ✅ UPDATED TIMEOUT & HEADERS
+            response = requests.get(url, headers=BarcodeService.HEADERS, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
@@ -155,7 +164,7 @@ class BarcodeService:
                         "expiry_days": BarcodeService._estimate_expiry_days(category)
                     }
         except Exception as e:
-            print(f"Open Food Facts error: {e}")
+            logger.warning("Open Food Facts error: %s", e)
         return None
     
     # ============================================
@@ -166,7 +175,8 @@ class BarcodeService:
         """FREE - Unlimited - No key needed"""
         try:
             url = f"{BarcodeService.UPC_DATABASE_URL}/{barcode}"
-            response = requests.get(url, timeout=5)
+            # ✅ UPDATED TIMEOUT & HEADERS
+            response = requests.get(url, headers=BarcodeService.HEADERS, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
@@ -188,7 +198,7 @@ class BarcodeService:
                         "expiry_days": BarcodeService._estimate_expiry_days(category)
                     }
         except Exception as e:
-            print(f"UPC Database error: {e}")
+            logger.warning("UPC Database error: %s", e)
         return None
     
     # ============================================
@@ -204,7 +214,8 @@ class BarcodeService:
                 "format": "json",
                 "ean": barcode
             }
-            response = requests.get(url, params=params, timeout=5)
+            # ✅ UPDATED TIMEOUT & HEADERS
+            response = requests.get(url, params=params, headers=BarcodeService.HEADERS, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
@@ -227,7 +238,7 @@ class BarcodeService:
                         "expiry_days": BarcodeService._estimate_expiry_days(category)
                     }
         except Exception as e:
-            print(f"EAN Search error: {e}")
+            logger.warning("EAN Search error: %s", e)
         return None
     
     # ============================================
@@ -244,7 +255,8 @@ class BarcodeService:
                 "signature": "free",
                 "language": "en"
             }
-            response = requests.get(url, params=params, timeout=5)
+            # ✅ UPDATED TIMEOUT & HEADERS
+            response = requests.get(url, params=params, headers=BarcodeService.HEADERS, timeout=15)
             
             if response.status_code == 200:
                 data = response.json()
@@ -266,7 +278,7 @@ class BarcodeService:
                         "expiry_days": BarcodeService._estimate_expiry_days(category)
                     }
         except Exception as e:
-            print(f"Digit Eyes error: {e}")
+            logger.warning("Digit Eyes error: %s", e)
         return None
     
     # ============================================

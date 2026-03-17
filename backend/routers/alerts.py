@@ -10,14 +10,14 @@ from backend.models.pantry_item import PantryItem
 from backend.routers.auth import get_current_user
 from backend.services.email_service import send_expiry_alert
 from pydantic import BaseModel
-from backend.services.scheduler_service import test_alerts_now
+from backend.services.scheduler_service import test_alerts_now, test_alerts_for_user
 
 
 router = APIRouter(prefix="/api/alerts", tags=["Alerts"])
-ADMIN_SECRET = os.getenv("ADMIN_SECRET", "admin123")
+ADMIN_SECRET = os.getenv("ADMIN_SECRET")
 
 class AlertResponse(BaseModel):
-    id: int
+    id: int 
     product_name: str
     category: str
     expiry_date: str
@@ -129,6 +129,9 @@ def test_alerts_all_users(x_admin_secret: str = Header(...)):
     Trigger alert check for ALL users in the database.
     Pass X-Admin-Secret header instead of Bearer token.
     """
+    if not ADMIN_SECRET or ADMIN_SECRET == "admin123":
+        raise HTTPException(status_code=503, detail="Admin test endpoint is disabled until ADMIN_SECRET is configured")
+
     if x_admin_secret != ADMIN_SECRET:
         raise HTTPException(status_code=403, detail="Invalid admin secret")
     
@@ -141,8 +144,8 @@ def test_alerts_all_users(x_admin_secret: str = Header(...)):
 def test_automatic_alerts(
     current_user: User = Depends(get_current_user)
 ):
-    """Test automatic alerts immediately (for testing purposes)"""
-    result = test_alerts_now()
+    """Test automatic alerts for current user only."""
+    result = test_alerts_for_user(current_user.id)
     return result
 
 

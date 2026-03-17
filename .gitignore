@@ -4,6 +4,13 @@ backend/.env
 backend\.env
 frontend/.streamlit/secrets.toml
 
+# GCP Credentials
+backend/*.json
+
+# Database
+*.db
+food_tracker.db
+
 # Database
 *.db
 food_tracker.db

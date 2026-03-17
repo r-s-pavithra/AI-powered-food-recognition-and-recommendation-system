@@ -46,6 +46,15 @@ if "user" not in st.session_state:
     st.session_state.user = None
 
 
+def _show_flash_messages():
+    """Show one-time success/error messages persisted across reruns."""
+    success_msg = st.session_state.pop("flash_success", None)
+    error_msg = st.session_state.pop("flash_error", None)
+    if success_msg:
+        st.success(success_msg)
+    if error_msg:
+        st.error(error_msg)
+
 
 def main():
     """Main application"""
@@ -137,7 +146,7 @@ def show_login_page():
                             
                             if user_response.status_code == 200:
                                 st.session_state.user = user_response.json()
-                                st.success("✅ Login successful!")
+                                st.session_state.flash_success = "Logged in successfully."
                                 st.rerun()
                             else:
                                 st.error("Failed to fetch user profile")
@@ -194,6 +203,7 @@ def show_login_page():
 
 def show_dashboard():
     """Show main dashboard"""
+    _show_flash_messages()
     
     # Show notification bell at the top
     headers = {"Authorization": f"Bearer {st.session_state.token}"}
@@ -245,16 +255,16 @@ def show_dashboard():
                 except:
                     pass
         
-        # Try to get items_saved from stats endpoint (if exists)
+        # Get saved-item count from waste analytics
         try:
             stats_response = requests.get(
-                f"{API_URL}/api/pantry/stats", 
+                f"{API_URL}/api/waste/savings-stats",
                 headers=headers,
                 timeout=3
             )
             if stats_response.status_code == 200:
                 stats = stats_response.json()
-                items_saved = stats.get('items_saved', 0)
+                items_saved = stats.get('total_items_saved', 0)
         except:
             items_saved = 0
     
@@ -297,78 +307,33 @@ def show_dashboard():
         )
     
     st.divider()
-    
-    # Quick actions with Test Alerts button
-    st.subheader("⚡ Quick Actions")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
+
+    # Pantry health summary
+    safe_items = max(total_items - (expired + expiring_soon), 0)
+    freshness_score = int((safe_items / total_items) * 100) if total_items > 0 else 100
+
+    col1, col2 = st.columns([2, 1])
     with col1:
-        if st.button("➕ Add Item", use_container_width=True, type="primary"):
-            st.switch_page("pages/1_Add_Item.py")
-    
+        st.subheader("✨ Pantry Health")
+        st.progress(freshness_score / 100.0)
+        st.caption(f"Freshness score: {freshness_score}%")
+
+        if expired > 0:
+            st.error(f"🔴 {expired} item(s) already expired. Remove or log them as wasted.")
+        elif expiring_soon > 0:
+            st.warning(f"🟡 {expiring_soon} item(s) are expiring soon. Plan meals for them first.")
+        else:
+            st.success("🟢 Great job! No urgent expiry risk right now.")
+
     with col2:
-        if st.button("📦 View Pantry", use_container_width=True):
-            try:
-                st.switch_page("pages/3_Pantry.py")
-            except:
-                st.info("Pantry page coming soon!")
-    
-    with col3:
-        if st.button("🍳 Find Recipes", use_container_width=True):
-            try:
-                st.switch_page("pages/4_Recipes.py")
-            except:
-                st.info("Recipes page coming soon!")
-    
-    with col4:
-        if st.button("🧪 Test Alerts", use_container_width=True, type="secondary"):
-            with st.spinner("🔍 Testing alert system..."):
-                try:
-                    response = requests.post(
-                        f"{API_URL}/api/alerts/test-automatic-alerts",
-                        headers=headers,
-                        timeout=15
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        
-                        st.success("✅ Alert system test completed!")
-                        
-                        # Show results
-                        metric_col1, metric_col2, metric_col3 = st.columns(3)
-                        
-                        with metric_col1:
-                            st.metric("Items Checked", result.get('items_checked', 0))
-                        
-                        with metric_col2:
-                            st.metric("Notifications", result.get('notifications_created', 0))
-                        
-                        with metric_col3:
-                            st.metric("Emails Sent", result.get('emails_sent', 0))
-                        
-                        st.toast()
-                        
-                        # Show instructions
-                        if result.get('items_checked', 0) > 0:
-                            st.info("📧 Check your email inbox for alert summary!")
-                            st.info("🔔 Refresh this page to see the notification bell update!")
-                            
-                            if st.button("🔄 Refresh Dashboard"):
-                                st.rerun()
-                        else:
-                            st.warning("⚠️ No items in pantry to check. Add some items first!")
-                    else:
-                        st.error(f"❌ Test failed. Status: {response.status_code}")
-                        st.info("Check backend logs for details")
-                
-                except requests.exceptions.ConnectionError:
-                    st.error("❌ Cannot connect to backend")
-                except requests.exceptions.Timeout:
-                    st.error("❌ Request timeout. Backend might be processing.")
-                except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+        st.subheader("📌 Today Focus")
+        st.markdown(
+            f"""
+            **Items at risk:** {expired + expiring_soon}  
+            **Items saved:** {items_saved}  
+            **Total pantry items:** {total_items}
+            """
+        )
     
     st.divider()
     
@@ -414,33 +379,9 @@ def show_dashboard():
     - Use the recipe finder to use ingredients before they expire
     - Track your waste to see your savings
     """)
-    
-    # System status
-    st.divider()
-    st.subheader("🔗 System Status")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        try:
-            response = requests.get(f"{API_URL}/health", timeout=2)
-            if response.status_code == 200:
-                st.success("✅ Backend Connected")
-            else:
-                st.warning("⚠️ Backend Issues")
-        except:
-            st.error("❌ Backend Offline")
-    
-    with col2:
-        if HAS_NOTIFICATIONS:
-            st.success("✅ Notifications Active")
-        else:
-            st.warning("⚠️ Notifications Inactive")
-    
-    with col3:
-        st.success("✅ Daily Alerts (9 AM)")
 
 
 
 if __name__ == "__main__":
     main()
+

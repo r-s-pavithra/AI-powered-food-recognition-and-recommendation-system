@@ -75,7 +75,7 @@ def show_notification_bell(API_URL, headers):
                                 col1, col2 = st.columns([1, 1])
                                 with col1:
                                     if st.button("✓ Dismiss", key=f"read_{notif['id']}", use_container_width=True):
-                                        requests.post(
+                                        requests.put(
                                             f"{API_URL}/api/notifications/{notif['id']}/mark-read",
                                             headers=headers,
                                             timeout=3
@@ -93,6 +93,6 @@ def show_notification_bell(API_URL, headers):
                             st.success("All alerts dismissed!")
                             st.rerun()
     
-    except Exception as e:
-        # Silently fail if notifications not available
+    except requests.RequestException:
+        # Silently fail if notification API is temporarily unavailable.
         pass

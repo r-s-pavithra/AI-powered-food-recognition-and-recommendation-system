@@ -28,7 +28,3 @@ MAILGUN_BASE_URL = os.getenv("MAILGUN_BASE_URL", "https://api.mailgun.net/v3")
 
 # CORS
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:8501").split(",")
-
-print(f"✅ Configuration loaded for {APP_NAME}")
-print(f"📧 Mailgun Domain: {MAILGUN_DOMAIN}")
-print(f"📧 Mailgun API Key: {'✅ Found' if MAILGUN_API_KEY else '❌ Missing'}")
